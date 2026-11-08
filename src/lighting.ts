@@ -75,11 +75,13 @@ export function computeLighting(p: SkyParams): Lighting {
   const ambTopDay = scale(zenGray, exposure * 1.7 * dim);
   const ambTop = add(ambTopDay, scale([0.05, 0.07, 0.12], night * (0.25 + moonLightAmt)), scale(cityGlow, 0.03));
   const groundBounce = scale(sunlightAt(20, p.sunDir, mieScale), exposure * Math.max(0, p.sunDir[2]) * 0.012 * dim);
-  const ambBottom = add(groundBounce, scale(ambTopDay, 0.18), scale(cityGlow, 0.32 * (0.6 + 0.4 * p.cloudLow)));
+  // Overcast light is neutral-to-cool; strip the warm ground-bounce tint under a deck.
+  const gb = luminance(groundBounce);
+  const ambBottom = add(mix(groundBounce, [gb * 0.95, gb, gb * 1.08], deck), scale(ambTopDay, 0.18), scale(cityGlow, 0.32 * (0.6 + 0.4 * p.cloudLow)));
 
   const nightSky = add(
-    scale([0.006, 0.009, 0.02], night),
-    scale([0.035, 0.026, 0.024], lp * night), // skyglow
+    scale([0.004, 0.007, 0.018], night),
+    scale([0.022, 0.017, 0.018], lp * night), // skyglow
     scale([0.012, 0.022, 0.05], night * moonLightAmt), // moonlit sky turns deep blue
   );
 
@@ -89,11 +91,13 @@ export function computeLighting(p: SkyParams): Lighting {
   const moonColor: Vec3 = scale([1.0, 0.97, 0.9], 0.3 + 1.1 * night);
   const moonGlow = scale([0.6, 0.65, 0.8], 0.05 * moonLightAmt * night * (1 + p.haze * 3));
 
-  const fogColor = mix(scale(ambTop, 0.6 * (1 - 0.35 * p.storminess)), add(scale(ambBottom, 1.2), scale(cityGlow, 0.05)), 0.3 * (1 - p.storminess * 0.6));
+  const fogColor0 = mix(scale(ambTop, 0.6 * (1 - 0.35 * p.storminess)), add(scale(ambBottom, 1.2), scale(cityGlow, 0.05)), 0.3 * (1 - p.storminess * 0.6));
+  const fl = luminance(fogColor0);
+  const fogColor = mix(fogColor0, [fl * 0.9, fl * 0.97, fl * 1.1], Math.min(1, deck * 0.7 + p.storminess * 0.5) * (1 - night));
   const glassTint = add(scale(ambTop, 0.6), scale(cityGlow, 0.05), [0.02, 0.02, 0.025]);
 
   // Stars: NYC washes out all but the brightest. Moon, haze and twilight dim further.
-  const starLimitMag = 6.4 - 3.4 * lp - 1.2 * moonLightAmt - 2.5 * p.haze - 3 * (1 - smooth(-8, -16, sunAlt));
+  const starLimitMag = 6.4 - 2.8 * lp - 1.2 * moonLightAmt - 2.5 * p.haze - 3 * (1 - smooth(-8, -16, sunAlt));
   const starVis = smooth(-4, -11, sunAlt);
 
   return {

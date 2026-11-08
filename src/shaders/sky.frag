@@ -240,6 +240,10 @@ void main() {
   col = col * low.a + low.rgb;
   transm *= low.a;
 
+  // Storms read cooler and darker: slate blue-gray rather than brown.
+  float lumS = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(col, vec3(lumS * 0.86, lumS * 0.95, lumS * 1.12) * 0.8, uStorm * 0.75);
+
   // Haze / fog and rain veil.
   float fog = saturate(uHaze * 0.7 + uRain * 0.15);
   col = mix(col, uFogColor, fog);

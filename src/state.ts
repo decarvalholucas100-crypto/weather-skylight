@@ -109,10 +109,13 @@ export function buildTarget(
   const spec = MODES[mode];
   const sunDir = spec.sun === 'real' ? astro.sunDir : dirFromAltAz(spec.sun.alt, spec.sun.az);
   let moonDir = astro.moonDir;
-  if (spec.moon === 'visible' && altOf(moonDir) < 35) moonDir = dirFromAltAz(58, 160);
+  if (spec.moon === 'visible' && altOf(moonDir) < 50) moonDir = dirFromAltAz(72, 175);
 
   const base = spec.weather === 'live' ? (weather ? weatherToParams(weather) : DEFAULT_WEATHER) : { ...DEFAULT_WEATHER, ...spec.weather };
-  const p: SkyParams = { sunDir, moonDir, moonFraction: astro.moonFraction, ...base };
+  // Illuminated fraction from the actual sun-moon geometry (matches the drawn phase, and stays
+  // consistent when a mode places the sun or moon somewhere other than their real positions).
+  const elong = sunDir[0] * moonDir[0] + sunDir[1] * moonDir[1] + sunDir[2] * moonDir[2];
+  const p: SkyParams = { sunDir, moonDir, moonFraction: (1 - elong) / 2, ...base };
 
   if (dev.cloud !== undefined) {
     p.cloudLow = dev.cloud;

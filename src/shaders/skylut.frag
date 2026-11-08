@@ -82,6 +82,6 @@ void main() {
   // Twilight grade: the deep blue of the blue hour comes largely from multiple scattering and
   // ozone, which single scattering underestimates. Nudge toward blue as the sun sets.
   float tw = smoothstep(0.2, -0.1, uSunDir.z);
-  L *= mix(vec3(1.0), vec3(0.42, 0.72, 1.3), tw);
+  L *= mix(vec3(1.0), vec3(0.24, 0.6, 1.25), tw);
   outColor = vec4(encodeHdr(L * uExposure), 1.0);
 }
