@@ -20,9 +20,18 @@ export interface Weather {
   liftedIndex: number; // negative = unstable
   metar: Metar | null; // nearest airport observation, if available
   fetchedAt: number; // epoch ms
+  lat: number; // the location this reading is for (rounded as sent)
+  lon: number;
 }
 
 const CACHE_KEY = 'skylight.weather.v1';
+
+/** Distance in km between a reading's location and a point (rough; for 'is this the same place?'). */
+export function weatherDistanceKm(w: Weather, lat: number, lon: number): number {
+  if (typeof w.lat !== 'number' || typeof w.lon !== 'number') return Infinity; // pre-tagging cache
+  const dy = (w.lat - lat) * 111, dx = (w.lon - lon) * 111 * Math.cos((lat * Math.PI) / 180);
+  return Math.hypot(dx, dy);
+}
 
 export function loadCachedWeather(): Weather | null {
   try {
@@ -69,6 +78,8 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
     liftedIndex: num(c.lifted_index, 5),
     metar: null,
     fetchedAt: Date.now(),
+    lat: Math.round(lat * 100) / 100,
+    lon: Math.round(lon * 100) / 100,
   };
   return w;
 }
@@ -93,13 +104,24 @@ export async function fetchMetar(signal?: AbortSignal): Promise<Metar | null> {
   }
 }
 
-/** Starts polling. Calls onUpdate with each successful reading. Never throws.
- * Returns { stop, refresh }: refresh() fetches immediately (e.g. after the location changes). */
-export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (s: string) => void): { stop: () => void; refresh: () => void } {
+export interface WeatherPoller {
+  stop: () => void;
+  /** Fetch now (e.g. after the location changes). Queued if a request is already in flight. */
+  refresh: () => void;
+  /** Epoch ms of the next scheduled fetch. */
+  nextAt: () => number;
+}
+
+/** Starts polling. Calls onUpdate with each successful reading. Never throws. Also refreshes
+ * when the tab becomes visible again after a long sleep (browsers throttle background timers). */
+export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (s: string) => void): WeatherPoller {
   let timer: number | undefined;
   let stopped = false;
   let inFlight = false;
   let pending = false; // a refresh requested mid-request runs right after it
+  let next = Date.now();
+  let lastOk = 0;
+  const schedule = (ms: number) => { clearTimeout(timer); next = Date.now() + ms; timer = window.setTimeout(run, ms); };
   const run = async () => {
     if (stopped) return;
     if (inFlight) { pending = true; return; }
@@ -111,18 +133,22 @@ export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (
       const [w, metar] = await Promise.all([fetchWeather(ctrl.signal), fetchMetar(ctrl.signal)]);
       w.metar = metar;
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(w)); } catch { /* storage may be unavailable */ }
+      lastOk = Date.now();
       onStatus?.('ok');
       onUpdate(w);
-      timer = window.setTimeout(run, config.weather.pollMinutes * 60_000);
+      schedule(config.weather.pollMinutes * 60_000);
     } catch (err) {
       onStatus?.(`retrying (${(err as Error).message})`);
-      timer = window.setTimeout(run, config.weather.retrySeconds * 1000);
+      schedule(config.weather.retrySeconds * 1000);
     } finally {
       clearTimeout(to);
       inFlight = false;
       if (pending) { pending = false; run(); }
     }
   };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && Date.now() - lastOk > config.weather.pollMinutes * 60_000) run();
+  });
   run();
-  return { stop: () => { stopped = true; clearTimeout(timer); }, refresh: () => { run(); } };
+  return { stop: () => { stopped = true; clearTimeout(timer); }, refresh: () => { run(); }, nextAt: () => next };
 }

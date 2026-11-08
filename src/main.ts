@@ -7,7 +7,7 @@ import { Renderer } from './render/renderer';
 import { planetRows } from './planets';
 import { buildTarget, cloneParams, computeAstro, describeClouds, easeParams, MODES, type DevOverrides, type SkyParams } from './state';
 import { Ui, type UiState } from './ui';
-import { loadCachedWeather, startWeatherPolling, type Weather } from './weather';
+import { loadCachedWeather, startWeatherPolling, weatherDistanceKm, type Weather } from './weather';
 import { getPlace, initLocation, loadCachedPlace, onPlaceChange } from './location';
 
 // ---- URL parameters: handy for testing on the TV, e.g. ?mode=storm&q=medium&t=19.5 ----
@@ -114,20 +114,36 @@ bus.on((c) => {
   ui.sync();
 });
 
-// Use the last known browser location before the first weather request goes out.
+// Use the last known location (picked city or browser fix) before the first weather request.
 loadCachedPlace(qs.get('geo') !== '0');
+// Cached weather from a different place is wrong here: drop it and wait for a fresh reading.
+if (weather && weatherDistanceKm(weather, config.location.lat, config.location.lon) > 15) {
+  weather = null;
+  weatherStatus = 'waiting';
+}
+// Set when the location changes; the next matching reading eases in quickly instead of over
+// minutes (a deliberate jump to another city should feel immediate, not like slow weather).
+let jumped = false;
 const weatherPoll = startWeatherPolling(
   (w) => {
+    // Ignore a response for a place we've since left (a request was in flight during the move).
+    if (weatherDistanceKm(w, config.location.lat, config.location.lon) > 15) return;
     const first = !weather;
     weather = w;
-    weatherTau = first ? (qs.has("snap") ? 0.05 : 3) : config.weather.easeSeconds;
+    weatherTau = first ? (qs.has('snap') ? 0.05 : 3) : jumped ? 4 : config.weather.easeSeconds;
+    jumped = false;
   },
   (s) => { weatherStatus = s; },
 );
 
-// Real location: ask the browser once (?geo=0 to skip). When it changes, re-fetch weather for
-// the new spot right away; sun, moon and stars follow automatically (they read config.location).
-onPlaceChange(() => { weatherPoll.refresh(); });
+// Real location: ask the browser once (?geo=0 to skip). When it changes: fetch weather for the
+// new place immediately; sun, moon, stars and sky darkness follow at once (they read config).
+onPlaceChange(() => {
+  jumped = true;
+  weatherTau = 4; // sky darkness and anything already known ease fast too
+  weatherStatus = 'fetching for new location';
+  weatherPoll.refresh();
+});
 initLocation(qs.get('geo') !== '0');
 
 // Hide the cursor when idle (it's a ceiling display).
@@ -202,7 +218,7 @@ function frame(): void {
     if (t > 0.7) { flashT = -1; flash = 0; }
   }
 
-  renderer.history = clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : 0.88;
+  renderer.history = clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : state.quality === 'high' ? 0.88 : 0.92;
   const L = computeLighting(current);
   if (qs.has('nolight')) { L.lightLow = [0, 0, 0]; }
   if (qs.has('noamb')) { L.ambTop = [0, 0, 0]; L.ambBottom = [0, 0, 0]; }
@@ -256,6 +272,7 @@ function frame(): void {
       `weather    ${weatherStatus}${w ? `  @ ${new Date(w.fetchedAt).toLocaleTimeString()}  code ${w.weatherCode}  cloud ${pct(w.cloudTotal)}  precip ${w.precipitation}mm  wind ${w.windSpeed}m/s from ${w.windFromDeg}°  vis ${(w.visibility / 1000).toFixed(1)}km` : ''}`,
       `location   ${(() => { const pl = getPlace(); return `${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}  (${pl.source === 'city' ? pl.name : pl.source === 'browser' ? `browser fix ±${pl.accuracyM} m` : pl.source === 'cached' ? 'last browser fix' : config.location.name})  sky glow ${Math.round(current.lightPollution * 100)}%  ${pl.timeZone}`; })()}`,
       `temp       ${fmtTemp(w?.tempC ?? w?.metar?.tempC ?? null)}${w?.metar ? `   station ${w.metar.station}${w.metar.distanceKm != null ? ` (${w.metar.distanceKm} km)` : ''}` : ''}`,
+      `refresh    every ${config.weather.pollMinutes} min, next in ${Math.max(0, Math.round((weatherPoll.nextAt() - Date.now()) / 60000))} min${w ? `, last reading ${Math.round((Date.now() - w.fetchedAt) / 60000)} min ago` : ''}`,
       `cape       ${w ? `${Math.round(w.cape ?? 0)} J/kg  lifted index ${(w.liftedIndex ?? 0).toFixed(1)}` : '-'}`,
       `metar      ${w?.metar ? `${w.metar.raw}` : 'unavailable (using Open-Meteo layers)'}`,
       `cloud type ${describeClouds(current)}`,

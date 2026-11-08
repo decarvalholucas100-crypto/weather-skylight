@@ -59,7 +59,9 @@ export const config = {
 
   quality: {
     high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560, cirrusStrands: 6000, noiseSize: 128 },
-    medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280, cirrusStrands: 2400, noiseSize: 64 },
+    // Pi 5: higher baseline than before; dynamic resolution lowers it automatically if the Pi
+    // can't hold 30 fps. Temporal accumulation makes up for the lower per-frame step count.
+    medium: { renderScale: 0.5, maxInternalWidth: 960, cloudSteps: 32, lightSteps: 3, skySamples: 10, outputMaxWidth: 1920, cirrusStrands: 2400, noiseSize: 64 },
     low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960, cirrusStrands: 900, noiseSize: 64 },
   } satisfies Record<QualityName, QualityPreset>,
 

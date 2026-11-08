@@ -42,7 +42,8 @@ uniform vec2 uFlashPos;      // world xy at cloud height
 uniform vec2 uResolution;
 uniform sampler2D uCirrus;   // strand cirrus (premultiplied), same resolution as this pass
 uniform sampler2D uPrev;     // previous frame, for temporal accumulation
-uniform vec2 uHistShift;     // how far cloud features moved on screen since last frame (uv)
+uniform vec2 uHistShift;
+uniform vec2 uJitter;        // sub-pixel offset for this frame (pixels, -0.5..0.5)     // how far cloud features moved on screen since last frame (uv)
 uniform float uHistory;      // 0 = no history, ~0.85 = smooth
 uniform float uFrame;
 
@@ -347,7 +348,9 @@ vec3 acesFilm(vec3 x) {
 }
 
 void main() {
-  vec3 rd = viewDir(vUv);
+  // Temporal anti-aliasing: each frame samples a different sub-pixel position; the history
+  // blend below averages them, turning stair-stepped cloud edges into smooth ones.
+  vec3 rd = viewDir(vUv + uJitter / uResolution);
 
   // Atmosphere
   vec3 col = skyRadiance(rd) + uNightSky;
@@ -403,6 +406,6 @@ void main() {
   float inside = step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
   // Anti-ghosting: where this frame differs sharply from history, trust this frame.
   float diff = length(col - prev.rgb);
-  float keep = uHistory * inside * (1.0 - smoothstep(0.25, 0.6, diff));
+  float keep = uHistory * inside * (1.0 - smoothstep(0.45, 0.9, diff));
   outColor = mix(vec4(col, transm), prev, keep);
 }

@@ -421,6 +421,10 @@ export class Renderer {
     this.prevWind = [f.windLow[0], f.windLow[1]];
     gl.uniform2f(u.uHistShift, shiftX, shiftY);
     gl.uniform1f(u.uHistory, histOk ? this.history : 0);
+    // Halton(2,3) sub-pixel jitter sequence (8 frames) for temporal anti-aliasing.
+    const fi = (this.frameNo % 8) + 1;
+    const halton = (i: number, b: number) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
+    gl.uniform2f(u.uJitter, halton(fi, 2) - 0.5, halton(fi, 3) - 0.5);
     gl.uniform1f(u.uFrame, this.frameNo++ % 64);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.historyValid = true;
