@@ -1,6 +1,6 @@
 # Skylight
 
-A virtual skylight: a full-screen WebGL2 sky, viewed straight up, driven by the real sun, moon and live weather for New York.
+A virtual skylight: a full-screen WebGL2 sky, viewed straight up, driven by the real sun, moon and live weather for New York, NY.
 
 ## Run
 
