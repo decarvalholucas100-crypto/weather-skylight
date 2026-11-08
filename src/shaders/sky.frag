@@ -42,6 +42,7 @@ uniform vec2 uFlashPos;      // world xy at cloud height
 uniform vec2 uResolution;
 uniform sampler2D uCirrus;   // strand cirrus (premultiplied), same resolution as this pass
 uniform sampler2D uPrev;     // previous frame, for temporal accumulation
+uniform vec2 uHistShift;     // how far cloud features moved on screen since last frame (uv)
 uniform float uHistory;      // 0 = no history, ~0.85 = smooth
 uniform float uFrame;
 
@@ -391,6 +392,9 @@ void main() {
   col = pow(col, vec3(1.0 / 2.2));
   // Temporal accumulation: each frame uses a different ray offset; blending frames removes
   // raymarch noise. Clouds move slowly, so the history barely smears.
-  vec4 prev = texture(uPrev, vUv);
-  outColor = mix(vec4(col, transm), prev, uHistory);
+  vec2 puv = vUv - uHistShift;
+  vec4 prev = texture(uPrev, puv);
+  // Off-screen history is unusable: fall back to the current frame there.
+  float inside = step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
+  outColor = mix(vec4(col, transm), prev, uHistory * inside);
 }

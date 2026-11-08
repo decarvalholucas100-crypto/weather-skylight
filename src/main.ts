@@ -202,7 +202,7 @@ function frame(): void {
     if (t > 0.7) { flashT = -1; flash = 0; }
   }
 
-  renderer.history = clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : 0.8;
+  renderer.history = clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : 0.88;
   const L = computeLighting(current);
   if (qs.has('nolight')) { L.lightLow = [0, 0, 0]; }
   if (qs.has('noamb')) { L.ambTop = [0, 0, 0]; L.ambBottom = [0, 0, 0]; }

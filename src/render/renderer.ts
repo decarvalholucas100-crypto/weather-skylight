@@ -124,6 +124,7 @@ export class Renderer {
   private historyValid = false;
   /** Temporal blend weight; lowered when time is sped up to avoid smearing. */
   history = 0.8;
+  private prevWind: [number, number] | null = null;
   private skyW = 0;
   private skyH = 0;
   private readonly lutSize = 128;
@@ -161,6 +162,7 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     for (const w of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, w, gl.REPEAT);
+    this.upgradeNoise();
 
     // Sky LUT target
     this.lutTex = this.makeTarget(this.lutSize, this.lutSize, false);
@@ -184,6 +186,28 @@ export class Renderer {
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
     gl.bindVertexArray(null);
+  }
+
+  /** Swap in a higher-resolution noise volume, generated in a worker (same pattern, finer detail). */
+  private upgradeNoise(): void {
+    const N = this.quality.noiseSize;
+    if (N <= 64 || typeof Worker === 'undefined') return;
+    try {
+      const worker = new Worker(new URL('./noiseWorker.ts', import.meta.url), { type: 'module' });
+      const t0 = performance.now();
+      worker.onmessage = (e: MessageEvent<Float32Array>) => {
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_3D, this.noiseTex);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, N, N, N, 0, gl.RGBA, gl.FLOAT, e.data);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        console.info(`cloud noise ${N}^3 ready in ${(performance.now() - t0).toFixed(0)} ms`);
+        worker.terminate();
+      };
+      worker.onerror = () => worker.terminate();
+      worker.postMessage(N);
+    } catch {
+      /* stay on the 64^3 volume */
+    }
   }
 
   private buildPrograms(): void {
@@ -379,7 +403,23 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.cirrusTex);
     gl.uniform1i(u.uCirrus, 3);
-    gl.uniform1f(u.uHistory, this.historyValid ? this.history : 0);
+    // Motion compensation: clouds drifted since last frame, so fetch history from where each
+    // feature used to be. Uses the low layer's height (the fastest-moving, most visible layer).
+    let shiftX = 0, shiftY = 0, histOk = this.historyValid;
+    if (this.prevWind) {
+      const dx = f.windLow[0] - this.prevWind[0], dy = f.windLow[1] - this.prevWind[1];
+      if (Math.hypot(dx, dy) > 1500) histOk = false; // wrap-around jump
+      else {
+        const c = this.camRot[0], s = this.camRot[1];
+        const lx = c * -dx + s * -dy, ly = -s * -dx + c * -dy; // feature motion, camera frame
+        const h = f.lowBase + 400;
+        shiftX = (-lx / h / this.tanHalf[0]) * 0.5;
+        shiftY = (ly / h / this.tanHalf[1]) * 0.5;
+      }
+    }
+    this.prevWind = [f.windLow[0], f.windLow[1]];
+    gl.uniform2f(u.uHistShift, shiftX, shiftY);
+    gl.uniform1f(u.uHistory, histOk ? this.history : 0);
     gl.uniform1f(u.uFrame, this.frameNo++ % 64);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.historyValid = true;
