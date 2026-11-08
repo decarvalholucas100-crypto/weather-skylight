@@ -8,6 +8,7 @@ import { planetRows } from './planets';
 import { buildTarget, cloneParams, computeAstro, describeClouds, easeParams, MODES, type DevOverrides, type SkyParams } from './state';
 import { Ui, type UiState } from './ui';
 import { loadCachedWeather, startWeatherPolling, type Weather } from './weather';
+import { getPlace, initLocation, loadCachedPlace, onPlaceChange } from './location';
 
 // ---- URL parameters: handy for testing on the TV, e.g. ?mode=storm&q=medium&t=19.5 ----
 const qs = new URLSearchParams(location.search);
@@ -106,7 +107,9 @@ bus.on((c) => {
   ui.sync();
 });
 
-startWeatherPolling(
+// Use the last known browser location before the first weather request goes out.
+loadCachedPlace(qs.get('geo') !== '0');
+const weatherPoll = startWeatherPolling(
   (w) => {
     const first = !weather;
     weather = w;
@@ -114,6 +117,11 @@ startWeatherPolling(
   },
   (s) => { weatherStatus = s; },
 );
+
+// Real location: ask the browser once (?geo=0 to skip). When it changes, re-fetch weather for
+// the new spot right away; sun, moon and stars follow automatically (they read config.location).
+onPlaceChange(() => { weatherPoll.refresh(); });
+initLocation(qs.get('geo') !== '0');
 
 // Hide the cursor when idle (it's a ceiling display).
 let idleTimer = 0;
@@ -204,6 +212,7 @@ function frame(): void {
     exposure: L.exposure, mieScale: L.mieScale,
     coverLow: current.cloudLow, coverMid: current.cloudMid, coverHigh: current.cloudHigh,
     lowBase: current.lowBase, convective: current.convective, towers: current.towers, underDeck: L.underDeck,
+    scud: Math.min(1, Math.max(current.storminess - 0.3, current.rain * 0.9) * Math.min(1, current.cloudLow * 1.2)),
     storm: current.storminess, rain: current.rain, wet, haze: current.haze,
     cloudTime, realTime: (now / 1000) % 3600,
     windLow, windMid, windHigh, windDir: [wx / ws, wy / ws],
@@ -238,6 +247,8 @@ function frame(): void {
       `rain       ${pct(current.rain)}  glass wet ${pct(wet)}  haze ${pct(current.haze)}`,
       `wind       ${Math.hypot(wx, wy).toFixed(1)} m/s toward ${Math.round((Math.atan2(wx, wy) * 180) / Math.PI + 360) % 360}°`,
       `weather    ${weatherStatus}${w ? `  @ ${new Date(w.fetchedAt).toLocaleTimeString()}  code ${w.weatherCode}  cloud ${pct(w.cloudTotal)}  precip ${w.precipitation}mm  wind ${w.windSpeed}m/s from ${w.windFromDeg}°  vis ${(w.visibility / 1000).toFixed(1)}km` : ''}`,
+      `location   ${(() => { const pl = getPlace(); return `${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}  (${pl.source === 'browser' ? `browser fix ±${pl.accuracyM} m` : pl.source === 'cached' ? 'last browser fix' : config.location.name})  ${pl.timeZone}`; })()}`,
+      `temp       ${fmtTemp(w?.tempC ?? w?.metar?.tempC ?? null)}${w?.metar ? `   station ${w.metar.station}${w.metar.distanceKm != null ? ` (${w.metar.distanceKm} km)` : ''}` : ''}`,
       `cape       ${w ? `${Math.round(w.cape ?? 0)} J/kg  lifted index ${(w.liftedIndex ?? 0).toFixed(1)}` : '-'}`,
       `metar      ${w?.metar ? `${w.metar.raw}` : 'unavailable (using Open-Meteo layers)'}`,
       `cloud type ${describeClouds(current)}`,
@@ -247,6 +258,7 @@ function frame(): void {
   requestAnimationFrame(frame);
 }
 
+const fmtTemp = (c: number | null) => (c == null ? '-' : `${Math.round(c * 9 / 5 + 32)}°F / ${Math.round(c)}°C`);
 const pct = (v: number) => `${Math.round(v * 100)}%`.padStart(4);
 
 // Fade in from black on load.

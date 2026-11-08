@@ -3,6 +3,7 @@ import { config, type ModeName, type QualityName } from './config';
 import { MODES, type DevOverrides } from './state';
 import type { SimClock } from './clock';
 import type { CommandBus } from './input';
+import { getPlace, onPlaceChange, resetLocation, useMyLocation } from './location';
 
 const css = `
 .sk-panel{position:fixed;top:16px;right:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;
@@ -171,6 +172,29 @@ export class Ui {
     const compass = (v: number) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(v / 45) % 8] + ` ${Math.round(v)}°`;
     this.slider(wx, { label: 'Wind toward', min: 0, max: 359, step: 1, value: 90, fmt: compass, overridable: true }, (v) => { dev.windToDeg = v; });
     this.slider(wx, { label: 'Lightning', min: 0, max: 1, step: 1, value: 1, fmt: (v) => (v ? 'on' : 'off'), overridable: true }, (v) => { dev.lightning = v === undefined ? undefined : v > 0.5; });
+
+    const loc = this.section('Location');
+    const locText = document.createElement('div');
+    locText.className = 'sk-row';
+    locText.style.color = '#c8d2e0';
+    const showLoc = () => {
+      const p = getPlace();
+      const src = p.source === 'browser' ? `your location (±${p.accuracyM} m)` : p.source === 'cached' ? 'last known location' : config.location.name;
+      locText.textContent = `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} · ${src}`;
+    };
+    showLoc();
+    onPlaceChange(showLoc);
+    loc.appendChild(locText);
+    const locBtns = new Map<string, HTMLButtonElement>();
+    this.buttons(loc, [['use', 'Use my location'], ['reset', 'Reset to address']], (k) => {
+      if (k === 'use') {
+        locText.textContent = 'Asking the browser…';
+        useMyLocation().then((ok) => { if (!ok) locText.textContent = 'Location unavailable or blocked (check browser site settings)'; else showLoc(); });
+      } else {
+        resetLocation();
+        showLoc();
+      }
+    }, locBtns);
 
     const disp = this.section('Display');
     this.brightSlider = this.slider(disp, { label: 'Brightness', min: config.brightness.min, max: config.brightness.max, step: 0.05, value: this.state.brightness, fmt: pct, overridable: false }, (v) => {

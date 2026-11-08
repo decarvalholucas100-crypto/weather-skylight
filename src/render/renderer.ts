@@ -39,6 +39,7 @@ export interface FrameUniforms {
   convective: number;
   towers: number;
   underDeck: number;
+  scud: number;
   coverMid: number;
   coverHigh: number;
   storm: number;
@@ -319,6 +320,7 @@ export class Renderer {
     gl.uniform1f(u.uConvective, f.convective);
     gl.uniform1f(u.uTowers, f.towers);
     gl.uniform1f(u.uUnderDeck, f.underDeck);
+    gl.uniform1f(u.uScud, f.scud);
     gl.uniform1f(u.uCoverMid, f.coverMid);
     gl.uniform1f(u.uCoverHigh, f.coverHigh);
     gl.uniform1f(u.uStorm, f.storm);

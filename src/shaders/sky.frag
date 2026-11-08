@@ -28,6 +28,7 @@ uniform float uStorm;
 uniform float uLowBase;      // m, low cloud base (METAR)
 uniform float uConvective;   // 0 stratus .. 1 cumulus
 uniform float uTowers;       // towering cumulus / cumulonimbus amount
+uniform float uScud;         // amount of low scud under storm / rain bases
 uniform float uUnderDeck;    // 1 = open sky above the low layer, ~0.1 = under a thick mid deck
 uniform float uRain;
 uniform float uHaze;
@@ -72,10 +73,13 @@ float heightProfile(float hf, float towerMask) {
   float hb = hf / frac;                            // height in ordinary-cloud units
   float tall = mix(frac, 1.0, towerMask);          // towers reach the top of the layer
   // Cumulus: flat base, rounded top. Stratus: thin uniform sheet.
-  float cumulus = smoothstep(0.0, 0.07, hb) * smoothstep(tall, tall * 0.5, hf);
+  float cumulus = smoothstep(0.0, 0.07, hb) * smoothstep(frac, frac * 0.5, hf);
   float stratus = smoothstep(0.0, 0.15, hb) * smoothstep(frac, frac * 0.7, hf);
   float flat_ = max(saturate(1.25 - uConvective * 1.7), saturate(uCoverLow * 1.2 - 0.3 + uStorm * 0.5) * (1.0 - uConvective * 0.6));
-  return mix(cumulus, stratus, saturate(flat_ - towerMask));
+  float body = mix(cumulus, stratus, saturate(flat_));
+  // Towers are stacked on top of the ordinary layer, so the base stays continuous (no seams).
+  float tower = smoothstep(0.0, 0.07, hb) * smoothstep(tall, tall * 0.45, hf) * step(0.01, towerMask);
+  return max(body, tower * towerMask);
 }
 
 float cloudDensity(vec3 p, float hf, bool detail) {
@@ -148,6 +152,11 @@ vec4 marchLow(vec3 rd, float jitter) {
         lt += ls;
         ls *= 1.9;
       }
+      // The light march stops ~1 km out; under a solid deck or storm the rest of the cloud
+      // above still blocks the sun. Add an estimate for that remainder so light can't leak.
+      float endZ = p.z + uLightDir.z * lt;
+      float remain = max(0.0, top - endZ) / max(uLightDir.z, 0.15);
+      od += remain * 0.3 * uCoverLow * uCoverLow * (0.4 + 0.6 * uStorm);
       od *= sigma;
       // Multiple-scattering octaves: each octave scatters less, attenuates less, and is more isotropic.
       vec3 direct = vec3(0.0);
@@ -284,6 +293,29 @@ vec4 midLayer(vec3 rd) {
   return vec4(col * alpha, 1.0 - alpha);
 }
 
+// ---------- scud: ragged fractus fragments racing below a storm or rain base ----------
+// Low (~400 m) so they cross the view quickly even in moderate wind: the strongest motion cue
+// under a storm. Darker than the deck above, lit mostly from below and by lightning.
+vec4 scudLayer(vec3 rd) {
+  float amt = uScud;
+  if (amt < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
+  float h = min(420.0, layerBase() * 0.6);
+  vec2 p = rd.xy * (h / rd.z) + uWindLow * 1.15;
+  vec2 wdir = uWindDir, perp = vec2(-wdir.y, wdir.x);
+  vec2 s = vec2(dot(p, wdir), dot(p, perp));
+  float t = uTime * 0.0008;
+  vec2 warp = vec2(fbm2(s / 900.0 + t * 20.0, 3), fbm2(s / 900.0 + 5.3 - t * 20.0, 3)) - 0.5;
+  vec2 q = s + warp * 500.0;
+  float n = fbm2(q / vec2(1300.0, 700.0), 5);
+  float rag = fbm2(q / 160.0, 3);
+  float th = 0.72 - amt * 0.25;
+  float d = smoothstep(th, th + 0.18, n * 0.85 + rag * 0.15);
+  float alpha = d * 0.9;
+  // Shadowed by the deck overhead: noticeably darker than the base behind it.
+  vec3 col = uAmbBottom * 0.5 + uAmbTop * 0.1 * (1.0 - d * 0.5) + vec3(0.75, 0.8, 1.0) * uFlash * 0.6;
+  return vec4(col * alpha, 1.0 - alpha);
+}
+
 // ---------- high layer: cirrus at ~9 km ----------
 // Fibrous ice-crystal streaks: ridged, strongly wind-stretched noise whose flow lines curve
 // (domain warping), grouped into irregular patches, with denser "tufts" where fibers hook.
@@ -361,6 +393,10 @@ void main() {
 #endif
   col = col * low.a + low.rgb;
   transm *= low.a;
+
+  vec4 scud = scudLayer(rd);
+  col = col * scud.a + scud.rgb;
+  transm *= scud.a;
 
   // Storms read cooler and darker: slate blue-gray rather than brown.
   float lumS = dot(col, vec3(0.2126, 0.7152, 0.0722));

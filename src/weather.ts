@@ -3,7 +3,7 @@
 import { config } from './config';
 
 export interface MetarLayer { cover: 'FEW' | 'SCT' | 'BKN' | 'OVC' | 'VV'; baseFt: number; type: 'CB' | 'TCU' | null }
-export interface Metar { station: string; obsTime: number; raw: string; clear: boolean; layers: MetarLayer[]; wx: string | null }
+export interface Metar { station: string; distanceKm?: number | null; obsTime: number; raw: string; clear: boolean; layers: MetarLayer[]; tempC?: number | null; wx: string | null }
 
 export interface Weather {
   cloudTotal: number; // 0..1
@@ -15,6 +15,7 @@ export interface Weather {
   windSpeed: number; // m/s at 10 m
   windFromDeg: number; // meteorological: direction the wind blows FROM
   visibility: number; // meters
+  tempC: number | null; // air temperature at 2 m, °C
   cape: number; // J/kg, convective available potential energy (instability)
   liftedIndex: number; // negative = unstable
   metar: Metar | null; // nearest airport observation, if available
@@ -42,7 +43,7 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
   const { lat, lon } = config.location;
   const vars = [
     'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
-    'precipitation', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'visibility', 'cape', 'lifted_index',
+    'precipitation', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'visibility', 'cape', 'lifted_index', 'temperature_2m',
   ].join(',');
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=${vars}&wind_speed_unit=ms&timezone=auto`;
   const res = await fetch(url, { signal, cache: 'no-store' });
@@ -63,6 +64,7 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
     windFromDeg: num(c.wind_direction_10m, 270),
     visibility: num(c.visibility, 24000),
     cape: num(c.cape, 0),
+    tempC: typeof c.temperature_2m === 'number' ? c.temperature_2m : null,
     liftedIndex: num(c.lifted_index, 5),
     metar: null,
     fetchedAt: Date.now(),
@@ -77,7 +79,9 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
  */
 export async function fetchMetar(signal?: AbortSignal): Promise<Metar | null> {
   try {
-    const res = await fetch(config.metarUrl, { signal, cache: 'no-store' });
+    const { lat, lon } = config.location;
+    const sep = config.metarUrl.includes('?') ? '&' : '?';
+    const res = await fetch(`${config.metarUrl}${sep}lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`, { signal, cache: 'no-store' });
     if (!res.ok) return null;
     const m = (await res.json()) as Metar & { error?: string };
     if (m.error || !Array.isArray(m.layers)) return null;
@@ -88,12 +92,18 @@ export async function fetchMetar(signal?: AbortSignal): Promise<Metar | null> {
   }
 }
 
-/** Starts polling. Calls onUpdate with each successful reading. Never throws. */
-export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (s: string) => void): () => void {
+/** Starts polling. Calls onUpdate with each successful reading. Never throws.
+ * Returns { stop, refresh }: refresh() fetches immediately (e.g. after the location changes). */
+export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (s: string) => void): { stop: () => void; refresh: () => void } {
   let timer: number | undefined;
   let stopped = false;
+  let inFlight = false;
+  let pending = false; // a refresh requested mid-request runs right after it
   const run = async () => {
     if (stopped) return;
+    if (inFlight) { pending = true; return; }
+    inFlight = true;
+    clearTimeout(timer);
     const ctrl = new AbortController();
     const to = window.setTimeout(() => ctrl.abort(), 15000);
     try {
@@ -108,8 +118,10 @@ export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (
       timer = window.setTimeout(run, config.weather.retrySeconds * 1000);
     } finally {
       clearTimeout(to);
+      inFlight = false;
+      if (pending) { pending = false; run(); }
     }
   };
   run();
-  return () => { stopped = true; clearTimeout(timer); };
+  return { stop: () => { stopped = true; clearTimeout(timer); }, refresh: () => { run(); } };
 }
