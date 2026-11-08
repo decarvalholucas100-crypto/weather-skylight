@@ -127,7 +127,10 @@ let jumped = false;
 const weatherPoll = startWeatherPolling(
   (w) => {
     // Ignore a response for a place we've since left (a request was in flight during the move).
-    if (weatherDistanceKm(w, config.location.lat, config.location.lon) > 15) return;
+    if (weatherDistanceKm(w, config.location.lat, config.location.lon) > 15) {
+      weatherStatus = 'fetching for new location';
+      return;
+    }
     const first = !weather;
     weather = w;
     weatherTau = first ? (qs.has('snap') ? 0.05 : 3) : jumped ? 4 : config.weather.easeSeconds;
