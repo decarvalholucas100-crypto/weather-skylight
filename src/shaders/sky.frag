@@ -181,40 +181,110 @@ vec4 flatLow(vec3 rd) {
   return vec4(col * alpha, 1.0 - alpha);
 }
 
-// ---------- mid layer: altocumulus / altostratus at ~4.5 km ----------
+// ---------- procedural 2D noise for the sheet layers (no texture tiling) ----------
+vec2 grad2(vec2 i) { float a = hash32(i).x * 6.2831853; return vec2(cos(a), sin(a)); }
+float gnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  float a = dot(grad2(i), f);
+  float b = dot(grad2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
+  float c = dot(grad2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
+  float d = dot(grad2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 1.4 + 0.5; // ~0..1
+}
+float fbm2(vec2 p, int oct) {
+  float s = 0.0, a = 0.5, n = 0.0;
+  mat2 r = mat2(0.8, 0.6, -0.6, 0.8);
+  for (int i = 0; i < 6; i++) {
+    if (i >= oct) break;
+    s += a * gnoise(p); n += a;
+    p = r * p * 2.03 + 17.1; a *= 0.5;
+  }
+  return s / n;
+}
+// Cellular (Worley) distance to nearest jittered point: altocumulus puffs.
+// Returns (distance relative to that cell's own puff radius, cell random value).
+vec2 cells2(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  float best = 9.0, id = 0.0;
+  for (int y = -1; y <= 1; y++)
+    for (int x = -1; x <= 1; x++) {
+      vec2 o = vec2(float(x), float(y));
+      vec3 h = hash32(i + o);
+      vec2 c = o + 0.1 + 0.8 * h.xy - f;
+      float rad = mix(0.35, 0.75, h.z);         // puffs vary in size
+      float dd = length(c) / rad;
+      if (dd < best) { best = dd; id = h.z; }
+    }
+  return vec2(best, id);
+}
+
+// ---------- mid layer: altocumulus / altostratus at ~4.6 km ----------
+// Rows of small rounded puffs ("mackerel sky") inside larger patches; becomes a continuous
+// gray altostratus sheet as coverage approaches 100%.
 vec4 midLayer(vec3 rd) {
   if (uCoverMid < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
   float h = 4600.0;
   vec2 p = rd.xy * (h / rd.z) + uWindMid;
-  float big = texture(uNoise, vec3(p / 25600.0, 0.71)).a;
-  float body = texture(uNoise, vec3(p / 12800.0, 0.29)).a;
-  float cells = texture(uNoise, vec3(p / 5120.0, 0.33)).g;
-  float fine = texture(uNoise, vec3(p / 1280.0, 0.21)).b;
-  float cov = saturate(uCoverMid + (big - 0.5) * 1.4 * (1.0 - uCoverMid));
-  float n = body * 0.55 + cells * 0.35 + fine * 0.1;
-  float d = smoothstep(1.0 - cov, 1.0 - cov + 0.35, n) * smoothstep(0.0, 0.1, uCoverMid);
-  float alpha = (1.0 - exp(-d * mix(2.5, 7.0, cov))) * mix(0.9, 1.0, cov);
+  vec2 wdir = uWindDir, perp = vec2(-wdir.y, wdir.x);
+  vec2 s = vec2(dot(p, wdir), dot(p, perp));
+  float cov = uCoverMid;
+  float patchN = fbm2(s / 9000.0 + 3.7, 4);
+  float th = 0.76 - cov * 0.62;
+  float patchM = smoothstep(th, th + 0.18, patchN);
+  // Puffs, slightly stretched across the wind and gently warped into irregular rows.
+  vec2 warp = vec2(fbm2(s / 2600.0, 3), fbm2(s / 2600.0 + 9.2, 3)) - 0.5;
+  vec2 cq = (s + warp * 900.0) / vec2(330.0, 250.0);
+  vec2 cell = cells2(cq);
+  float rough = fbm2(s / 140.0, 3);
+  // Rounded puffs with ragged edges; some cells empty so the pattern never reads as a grid.
+  float puff = smoothstep(1.0, 0.35, cell.x + (rough - 0.5) * 0.5) * step(0.18, cell.y) * (0.55 + 0.45 * rough);
+  float sheet = fbm2(s / 1400.0, 4);
+  float deck = smoothstep(0.6, 1.0, cov);
+  float d = patchM * mix(puff, 0.55 + 0.45 * sheet, deck);
+  float alpha = (1.0 - exp(-d * mix(1.6, 5.0, deck))) * mix(0.8, 1.0, deck) * smoothstep(0.0, 0.08, cov);
   float cosA = dot(rd, uLightDir);
-  vec3 col = uAmbTop * 0.9 + uAmbBottom * 0.4 + uLightMid * (0.12 + hgPhase(cosA, 0.6) * 1.8 * (1.0 - d * 0.6));
+  // Seen from below, a puff's thick middle is shaded gray and its thin rim catches the light.
+  float thick = saturate(d * 1.6);
+  vec3 col = (uAmbTop * 0.8 + uAmbBottom * 0.4) * mix(1.0, 0.62, thick)
+           + uLightMid * (0.06 + hgPhase(cosA, 0.65) * (0.3 + 1.4 * (1.0 - thick)) * (1.0 - deck * 0.5));
   return vec4(col * alpha, 1.0 - alpha);
 }
 
-// ---------- high layer: cirrus at ~9 km, stretched along the wind ----------
+// ---------- high layer: cirrus at ~9 km ----------
+// Fibrous ice-crystal streaks: ridged, strongly wind-stretched noise whose flow lines curve
+// (domain warping), grouped into irregular patches, with denser "tufts" where fibers hook.
 vec4 highLayer(vec3 rd) {
   if (uCoverHigh < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
   float h = 9000.0;
-  vec2 p = rd.xy * (h / rd.z);
-  vec2 wdir = uWindDir;
-  vec2 perp = vec2(-wdir.y, wdir.x);
+  vec2 p = rd.xy * (h / rd.z) + uWindHigh;
+  vec2 wdir = uWindDir, perp = vec2(-wdir.y, wdir.x);
   vec2 s = vec2(dot(p, wdir), dot(p, perp));
-  s = vec2(s.x / 5.0, s.y) + vec2(dot(uWindHigh, wdir) / 5.0, dot(uWindHigh, perp));
-  float n = texture(uNoise, vec3(s / 9000.0, 0.47)).a * 0.6 + texture(uNoise, vec3(s / 2500.0, 0.81)).a * 0.3
-          + texture(uNoise, vec3(s / 700.0, 0.12)).g * 0.1;
   float cov = uCoverHigh;
-  float d = saturate(remap(n, 1.0 - cov * 0.75, 1.0, 0.0, 1.0));
-  float alpha = (1.0 - exp(-d * 1.6)) * 0.55 * smoothstep(0.0, 0.1, cov);
+
+  // Where cirrus exists at all: big irregular patches and bands.
+  float patchN = fbm2(s / vec2(30000.0, 14000.0) + 1.3, 4);
+  float th = 0.6 - cov * 0.55;
+  float patchM = smoothstep(th, th + 0.22, patchN);
+  if (patchM < 0.003) return vec4(0.0, 0.0, 0.0, 1.0);
+
+  // Curving flow: displace coordinates with low-frequency noise so wisps bend and fan out.
+  vec2 w1 = vec2(fbm2(s / 9000.0 + 4.1, 3), fbm2(s / 9000.0 + 11.7, 3)) - 0.5;
+  vec2 q = s + vec2(w1.x * 2000.0, w1.y * 4000.0);
+  // Wisps: soft, strongly wind-stretched clouds (the body of each cirrus streak).
+  float wisp = fbm2(q / vec2(7500.0, 1400.0) + 2.2, 5);
+  float body = smoothstep(0.5, 0.78, wisp);
+  // Fibers: fine striations along the wind, broken up so they never form continuous lines.
+  float stri = fbm2(q / vec2(2600.0, 95.0), 2);
+  float brk = fbm2(q / vec2(1800.0, 700.0) + 8.8, 2);
+  float fibers = mix(0.45, 1.0, smoothstep(0.35, 0.75, stri)) * mix(0.6, 1.0, brk);
+  // Tufts: denser heads where streaks hook (cirrus uncinus).
+  float tuft = smoothstep(0.62, 0.85, fbm2(q / vec2(2200.0, 1000.0) + 5.5, 3));
+  float d = patchM * body * fibers * (1.0 + tuft * 0.8);
+  float alpha = (1.0 - exp(-d * 1.4)) * 0.72 * smoothstep(0.0, 0.08, cov);
   float cosA = dot(rd, uSunDir);
-  vec3 col = uAmbTop * 1.0 + uLightHigh * (0.16 + hgPhase(cosA, 0.75) * 1.2);
+  // Ice crystals forward-scatter strongly: cirrus near the sun glows.
+  vec3 col = uAmbTop * 1.05 + uLightHigh * (0.14 + hgPhase(cosA, 0.8) * 1.1 + hgPhase(cosA, 0.3) * 0.4);
   return vec4(col * alpha, 1.0 - alpha);
 }
 

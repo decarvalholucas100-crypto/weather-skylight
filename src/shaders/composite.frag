@@ -93,6 +93,33 @@ vec4 slidingDrops(vec2 p, float cols, float t, float seed) {
   return vec4(drop, trail);
 }
 
+// Catmull-Rom bicubic filtering using 9 bilinear taps (exploits hardware filtering to cover
+// the 4x4 kernel). Standard derivation of the Catmull-Rom spline weights.
+vec4 sampleCatmullRom(sampler2D tex, vec2 uv) {
+  vec2 size = vec2(textureSize(tex, 0));
+  vec2 sp = uv * size - 0.5;
+  vec2 t1 = floor(sp) + 0.5;
+  vec2 f = sp - floor(sp);
+  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+  vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+  vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+  vec2 w3 = f * f * (-0.5 + 0.5 * f);
+  vec2 w12 = w1 + w2;
+  vec2 o12 = w2 / w12;
+  vec2 p0 = (t1 - 1.0) / size, p3 = (t1 + 2.0) / size, p12 = (t1 + o12) / size;
+  vec4 r = vec4(0.0);
+  r += textureLod(tex, vec2(p0.x, p0.y), 0.0) * w0.x * w0.y;
+  r += textureLod(tex, vec2(p12.x, p0.y), 0.0) * w12.x * w0.y;
+  r += textureLod(tex, vec2(p3.x, p0.y), 0.0) * w3.x * w0.y;
+  r += textureLod(tex, vec2(p0.x, p12.y), 0.0) * w0.x * w12.y;
+  r += textureLod(tex, vec2(p12.x, p12.y), 0.0) * w12.x * w12.y;
+  r += textureLod(tex, vec2(p3.x, p12.y), 0.0) * w3.x * w12.y;
+  r += textureLod(tex, vec2(p0.x, p3.y), 0.0) * w0.x * w3.y;
+  r += textureLod(tex, vec2(p12.x, p3.y), 0.0) * w12.x * w3.y;
+  r += textureLod(tex, vec2(p3.x, p3.y), 0.0) * w3.x * w3.y;
+  return r;
+}
+
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
@@ -121,9 +148,9 @@ vec4 moonShade(vec2 s, vec3 tx, vec3 ty) {
   maria = max(maria, smoothstep(0.2, 0.08, length(sw - vec2(-0.2, -0.33))) * 0.8);                     // Nubium
   maria = max(maria, smoothstep(0.16, 0.06, length(sw - vec2(0.5, -0.08))) * 0.85);                    // Fecunditatis
   maria *= 0.75 + 0.5 * vnoise(s * 7.0);
-  float albedo = mix(1.0, 0.5, saturate(maria));
-  albedo *= 0.9 + 0.12 * vnoise(s * 18.0) + 0.06 * vnoise(s * 41.0);
-  albedo += 0.35 * smoothstep(0.06, 0.0, length(s - vec2(-0.12, -0.72)));                             // Tycho
+  float albedo = mix(1.0, 0.76, saturate(maria));
+  albedo *= 0.94 + 0.06 * vnoise(s * 18.0) + 0.03 * vnoise(s * 41.0);
+  albedo += 0.12 * smoothstep(0.06, 0.0, length(s - vec2(-0.12, -0.72)));                             // Tycho
   float limb = 0.78 + 0.22 * sqrt(1.0 - r2);
   // Coverage follows the lit part, so the dark side melts into the sky (plus faint earthshine).
   // Premultiplied: coverage follows the lit part so the dark side melts into the sky,
@@ -180,11 +207,10 @@ void main() {
 
   // Drops act as tiny lenses: the image through them is shrunk and inverted.
   vec2 uv = vUv - offset * vec2(1.0 / aspect.x, 1.0) * 0.022;
-  vec4 sky = textureLod(uSky, uv, lod);
-  vec3 col = sky.rgb;
-  // Gentle unsharp mask: restores crispness lost when upscaling the reduced-resolution sky.
-  vec3 soft = textureLod(uSky, uv, lod + 1.5).rgb;
-  col = max(vec3(0.0), col + (col - soft) * 0.35 * (1.0 - saturate(lod)));
+  // Bicubic (Catmull-Rom) upscale of the reduced-resolution sky when the glass is dry: sharper
+  // than bilinear without blocky artifacts. Wet glass uses blurred mip levels instead.
+  vec4 sky = lod < 0.05 ? sampleCatmullRom(uSky, uv) : textureLod(uSky, uv, lod);
+  vec3 col = max(sky.rgb, vec3(0.0));
 
   vec3 rd = viewDir(vUv);
   // The moon covers the sky behind it (dimmed by any cloud in front); its glow adds on top.
