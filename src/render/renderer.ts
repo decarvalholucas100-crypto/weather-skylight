@@ -60,6 +60,7 @@ export interface FrameUniforms {
   worldToEq: Float32Array;
   starLimitMag: number;
   starVis: number;
+  milkyWay: number;
 }
 
 type Uniforms = Record<string, WebGLUniformLocation | null>;
@@ -450,6 +451,8 @@ export class Renderer {
     gl.uniform1f(u.uPixelAngle, (2 * this.tanHalf[1]) / this.outH);
     gl.uniform1f(u.uMoonGlowAmt, f.moonGlowAmt);
     gl.uniform3fv(u.uGlassTint, f.glassTint);
+    gl.uniformMatrix3fv(u.uWorldToEq, false, f.worldToEq);
+    gl.uniform1f(u.uMilkyWay, f.milkyWay);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // 4. Stars, additive

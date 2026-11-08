@@ -3,7 +3,8 @@ import { config, type ModeName, type QualityName } from './config';
 import { MODES, type DevOverrides } from './state';
 import type { SimClock } from './clock';
 import type { CommandBus } from './input';
-import { getPlace, onPlaceChange, resetLocation, useMyLocation } from './location';
+import { getPlace, onPlaceChange, resetLocation, setCity, useMyLocation } from './location';
+import { CITIES } from './cities';
 
 const css = `
 .sk-panel{position:fixed;top:16px;right:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;
@@ -179,12 +180,23 @@ export class Ui {
     locText.style.color = '#c8d2e0';
     const showLoc = () => {
       const p = getPlace();
-      const src = p.source === 'browser' ? `your location (±${p.accuracyM} m)` : p.source === 'cached' ? 'last known location' : config.location.name;
+      const src = p.source === 'city' ? p.name ?? 'city' : p.source === 'browser' ? `your location (±${p.accuracyM} m)` : p.source === 'cached' ? 'last known location' : config.location.name;
+      if (p.source !== 'city') citySel.value = '';
       locText.textContent = `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} · ${src}`;
     };
+    const citySel = document.createElement('select');
+    citySel.style.cssText = 'width:100%;margin:6px 0 8px;padding:6px;border-radius:8px;background:#1f2633;color:#dfe6f0;border:1px solid #2f3a4d;font:inherit';
+    citySel.append(new Option('Pick a city…', ''));
+    [...CITIES].sort((a, b) => a.name.localeCompare(b.name)).forEach((c) => citySel.append(new Option(c.name, c.name)));
+    citySel.addEventListener('change', () => {
+      const c = CITIES.find((x) => x.name === citySel.value);
+      if (c) setCity(c);
+    });
+    if (getPlace().source === 'city') citySel.value = getPlace().name ?? '';
     showLoc();
     onPlaceChange(showLoc);
     loc.appendChild(locText);
+    loc.appendChild(citySel);
     const locBtns = new Map<string, HTMLButtonElement>();
     this.buttons(loc, [['use', 'Use my location'], ['reset', 'Reset to address']], (k) => {
       if (k === 'use') {

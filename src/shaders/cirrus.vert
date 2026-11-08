@@ -63,7 +63,7 @@ void main() {
   // Where cirrus exists: large patches (same field for the whole cluster, in fixed world space).
   vec2 anchor = rel + uWindHigh;
   float patchN = gnoise(anchor / 21000.0 + 3.1) * 0.65 + gnoise(anchor / 8000.0 + 7.7) * 0.35;
-  float th = 0.68 - uCover * 0.62;
+  float th = 0.8 - uCover * 0.62; // sparse at low cover, common only when high cover is real
   float patchM = smoothstep(th, th + 0.16, patchN);
 
   // Bundle direction: wind direction plus a slowly varying flow angle shared by the cluster.
@@ -77,7 +77,8 @@ void main() {
   // Strands overlap heavily inside a bundle (a Gaussian-ish spread), so they merge into a wisp.
   float spread = (hs.y + hs2.x - 1.0) * mix(700.0, 2200.0, hc.y);
   vec2 origin = rel + side * spread + dir * (hs.z - 0.5) * L * 0.6;
-  float curve = (hc.z - 0.5) * 0.7 + (hs2.x - 0.5) * 0.25;   // fall streaks hook to one side
+  // Strands in a bundle run nearly parallel (shared hook), with only slight individual bend.
+  float curve = (hc.z - 0.5) * 0.6 + (hs2.x - 0.5) * 0.06;
   float widthM = mix(60.0, 260.0, hs2.y * hs2.y) * mix(0.8, 1.3, hc.y);
 
   int seg = gl_VertexID / 2;

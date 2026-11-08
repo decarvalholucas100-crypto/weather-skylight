@@ -8,6 +8,8 @@ A virtual skylight: a full-screen WebGL2 sky, viewed straight up, driven by the 
 - **Weather**: Open-Meteo every 15 min (cloud layers, precipitation, wind, visibility, temperature, CAPE / lifted index), eased in over ~3 min.
 - **Cloud layers**: the nearest airport METAR (via `api/metar.js`, a Vercel function relaying aviationweather.gov) gives real layer coverage and base heights, plus towering cumulus / cumulonimbus flags. Instability (CAPE) decides puffy cumulus vs flat stratus.
 - **Location**: the browser's location if allowed (asked once, cached, refreshed every 30 min), else the address in `src/config.ts`. `?geo=0` skips the prompt (kiosks).
+- **Stars**: 5,000+ real stars (Hipparcos-derived catalog) and the Milky Way along the real galactic plane, rotating with sidereal time. How many show depends on estimated light pollution for the location (distance to major cities); Clear Night is a lights-out dark sky.
+- **Cities**: pick any of ~70 cities (plus a few dark-sky sites) in the dev panel; it overrides the browser location until reset.
 - **Offline**: last weather and location are cached; astronomy keeps running without network.
 
 ## Run
@@ -45,5 +47,8 @@ Every input is a text command (`mode.next`, `mode.set storm`, `brightness.up`, `
 `src/config.ts`: location and time zone, screen heading, field of view, light pollution, poll interval, easing time, quality presets (render scale, raymarch steps), brightness range.
 
 ## Licensing
+
+See THIRD_PARTY_NOTICES.md for SunCalc, the star catalog (BSD-3, derived from Hipparcos) and JPL planet elements.
+
 
 All shaders are original implementations of published techniques (Bruneton/Hillaire atmosphere, Schneider-style volumetric clouds, Henyey-Greenstein phase, PCG hash). No Shadertoy code is used. Runtime dependency: SunCalc (BSD-2-Clause). Star positions are public astronomical facts.

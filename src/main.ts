@@ -226,7 +226,7 @@ function frame(): void {
     flash, flashPos,
     brightness: state.brightness,
     worldToEq: astro.worldToEq,
-    starLimitMag: L.starLimitMag, starVis: L.starVis,
+    starLimitMag: L.starLimitMag, starVis: L.starVis, milkyWay: L.milkyWay,
   });
 
   // FPS + overlay + dynamic resolution
@@ -254,7 +254,7 @@ function frame(): void {
       `rain       ${pct(current.rain)}  glass wet ${pct(wet)}  haze ${pct(current.haze)}`,
       `wind       ${Math.hypot(wx, wy).toFixed(1)} m/s toward ${Math.round((Math.atan2(wx, wy) * 180) / Math.PI + 360) % 360}°`,
       `weather    ${weatherStatus}${w ? `  @ ${new Date(w.fetchedAt).toLocaleTimeString()}  code ${w.weatherCode}  cloud ${pct(w.cloudTotal)}  precip ${w.precipitation}mm  wind ${w.windSpeed}m/s from ${w.windFromDeg}°  vis ${(w.visibility / 1000).toFixed(1)}km` : ''}`,
-      `location   ${(() => { const pl = getPlace(); return `${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}  (${pl.source === 'browser' ? `browser fix ±${pl.accuracyM} m` : pl.source === 'cached' ? 'last browser fix' : config.location.name})  ${pl.timeZone}`; })()}`,
+      `location   ${(() => { const pl = getPlace(); return `${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}  (${pl.source === 'city' ? pl.name : pl.source === 'browser' ? `browser fix ±${pl.accuracyM} m` : pl.source === 'cached' ? 'last browser fix' : config.location.name})  sky glow ${Math.round(current.lightPollution * 100)}%  ${pl.timeZone}`; })()}`,
       `temp       ${fmtTemp(w?.tempC ?? w?.metar?.tempC ?? null)}${w?.metar ? `   station ${w.metar.station}${w.metar.distanceKm != null ? ` (${w.metar.distanceKm} km)` : ''}` : ''}`,
       `cape       ${w ? `${Math.round(w.cape ?? 0)} J/kg  lifted index ${(w.liftedIndex ?? 0).toFixed(1)}` : '-'}`,
       `metar      ${w?.metar ? `${w.metar.raw}` : 'unavailable (using Open-Meteo layers)'}`,

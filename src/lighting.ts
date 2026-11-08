@@ -3,7 +3,6 @@
 // Night terms (moonlight, city glow, starlight) are added in display units on top.
 import { altOf, type Vec3 } from './astro';
 import { luminance, sunlightAt, zenithRadiance } from './atmosphere';
-import { config } from './config';
 import type { SkyParams } from './state';
 
 const smooth = (a: number, b: number, x: number) => {
@@ -32,6 +31,7 @@ export interface Lighting {
   glassTint: Vec3;
   starLimitMag: number;
   starVis: number;
+  milkyWay: number;
   night: number;
   underDeck: number;
 }
@@ -40,7 +40,7 @@ export function computeLighting(p: SkyParams): Lighting {
   const sunAlt = altOf(p.sunDir);
   const moonAlt = altOf(p.moonDir);
   const mieScale = 1 + p.haze * 8 + p.rain * 3;
-  const lp = config.lightPollution;
+  const lp = p.lightPollution;
 
   const zen = zenithRadiance(p.sunDir, mieScale);
   const zenL = luminance(zen);
@@ -116,5 +116,7 @@ export function computeLighting(p: SkyParams): Lighting {
     lightLow: add(sunLow, moonLight), lightMid: add(sunMid, moonLight), lightHigh: add(sunHigh, scale(moonLight, 1.2)),
     ambTop, ambBottom, sunDisk, nightSky, moonGlow, moonColor, moonGlowAmt, fogColor, glassTint,
     starLimitMag, starVis, night, underDeck,
+    // Visible only under genuinely dark skies, with little moonlight.
+    milkyWay: starVis * Math.pow(Math.max(0, 1 - lp / 0.55), 2) * (1 - 0.8 * moonLightAmt) * (1 - p.haze),
   };
 }

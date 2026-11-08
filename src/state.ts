@@ -21,6 +21,7 @@ export interface SkyParams {
   lowBase: number; // meters, base of the low cloud layer (from METAR when available)
   convective: number; // 0 = flat stratiform layer, 1 = puffy cumulus (from CAPE / lifted index)
   towers: number; // 0..1 towering cumulus / cumulonimbus (METAR TCU / CB)
+  lightPollution: number; // 0 pristine .. ~0.95 city core: skyglow, star count, lit cloud bases
 }
 
 export interface DevOverrides {
@@ -48,15 +49,16 @@ export const MODES: Record<ModeName, ModeSpec> = {
   live: { label: 'Live', sun: 'real', moon: 'real', weather: 'live' },
   sunny: {
     label: 'Always Sunny', sun: 'real', moon: 'real',
-    weather: { cloudLow: 0.0, cloudMid: 0, cloudHigh: 0.08, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 4, windY: 1 },
+    weather: { cloudLow: 0.0, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 4, windY: 1 },
   },
   partly: {
     label: 'Partly Cloudy', sun: 'real', moon: 'real',
-    weather: { cloudLow: 0.28, cloudMid: 0, cloudHigh: 0.12, storminess: 0, rain: 0, haze: 0.06, lightning: 0, windX: 5, windY: 2, lowBase: 1300, convective: 0.85, towers: 0 },
+    weather: { cloudLow: 0.28, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.06, lightning: 0, windX: 5, windY: 2, lowBase: 1300, convective: 0.85, towers: 0 },
   },
   clearNight: {
-    label: 'Clear Night', sun: { alt: -32, az: 0 }, moon: 'visible',
-    weather: { cloudLow: 0, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 2, windY: 1 },
+    label: 'Clear Night', sun: { alt: -32, az: 0 }, moon: 'real',
+    // Lights-out dark sky: the real stars for this place and time, without city glow.
+    weather: { cloudLow: 0, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.02, lightning: 0, windX: 2, windY: 1, lightPollution: 0.12 },
   },
   cloudyNight: {
     label: 'Cloudy Night', sun: { alt: -32, az: 0 }, moon: 'visible',
@@ -159,6 +161,7 @@ export function weatherToParams(w: Weather): Omit<SkyParams, 'sunDir' | 'moonDir
     lowBase,
     convective,
     towers,
+    lightPollution: config.lightPollution,
   };
 }
 
@@ -172,7 +175,7 @@ export function describeClouds(p: SkyParams): string {
 
 const DEFAULT_WEATHER: Omit<SkyParams, 'sunDir' | 'moonDir' | 'moonFraction'> = {
   cloudLow: 0.3, cloudMid: 0.1, cloudHigh: 0.2, storminess: 0, rain: 0, windX: 5, windY: 2, haze: 0.1, lightning: 0,
-  lowBase: 1350, convective: 0.7, towers: 0,
+  lowBase: 1350, convective: 0.7, towers: 0, lightPollution: 0.8,
 };
 
 export function buildTarget(
@@ -186,7 +189,8 @@ export function buildTarget(
   let moonDir = astro.moonDir;
   if (spec.moon === 'visible' && altOf(moonDir) < 50) moonDir = dirFromAltAz(72, 175);
 
-  const base = spec.weather === 'live' ? (weather ? weatherToParams(weather) : DEFAULT_WEATHER) : { ...DEFAULT_WEATHER, ...spec.weather };
+  const base = spec.weather === 'live' ? (weather ? weatherToParams(weather) : { ...DEFAULT_WEATHER }) : { ...DEFAULT_WEATHER, lightPollution: config.lightPollution, ...spec.weather };
+  if (spec.weather === 'live') base.lightPollution = config.lightPollution;
   // Illuminated fraction from the actual sun-moon geometry (matches the drawn phase, and stays
   // consistent when a mode places the sun or moon somewhere other than their real positions).
   const elong = sunDir[0] * moonDir[0] + sunDir[1] * moonDir[1] + sunDir[2] * moonDir[2];
@@ -195,7 +199,7 @@ export function buildTarget(
   if (dev.cloud !== undefined) {
     p.cloudLow = dev.cloud;
     p.cloudMid = Math.min(1, Math.max(0, dev.cloud - 0.35) * 0.7);
-    p.cloudHigh = Math.min(1, 0.12 + dev.cloud * 0.3);
+    p.cloudHigh = Math.min(1, Math.max(0, dev.cloud - 0.3) * 0.4);
     if (dev.rain === undefined) p.storminess = dev.cloud > 0.9 ? 0.3 : 0;
   }
   if (dev.rain !== undefined) {
@@ -232,7 +236,7 @@ function easeVec(cur: Vec3, tgt: Vec3, k: number): Vec3 {
   return [v[0] / l, v[1] / l, v[2] / l];
 }
 
-const WEATHER_KEYS = ['cloudLow', 'cloudMid', 'cloudHigh', 'storminess', 'rain', 'windX', 'windY', 'haze', 'lightning', 'lowBase', 'convective', 'towers'] as const;
+const WEATHER_KEYS = ['cloudLow', 'cloudMid', 'cloudHigh', 'storminess', 'rain', 'windX', 'windY', 'haze', 'lightning', 'lowBase', 'convective', 'towers', 'lightPollution'] as const;
 
 /**
  * Exponential easing. astroTau governs sun/moon (short, so time scrubbing stays responsive);

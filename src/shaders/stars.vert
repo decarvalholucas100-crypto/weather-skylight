@@ -38,7 +38,8 @@ void main() {
   // Brightness from magnitude (each magnitude is 2.512x), with gentle scintillation.
   float flux = pow(2.512, -mag + 1.0);
   float tw = gl_VertexID >= uPlanetStart ? 1.0 : 1.0 + 0.18 * sin(uTime * (7.0 + fract(aEq.x * 911.0) * 9.0) + aEq.y * 400.0);
-  vBright = min(4.0, flux * 2.4 + 0.45) * vis * tw;
+  // Perceptual compression: faint stars stay visible next to bright ones, as to the dark-adapted eye.
+  vBright = min(4.0, pow(flux, 0.6) * 1.8 + 0.18) * vis * tw;
   gl_PointSize = uPxScale * (5.0 + 5.0 * clamp(1.6 - mag * 0.55, 0.0, 2.4));
   vColor = bvToRgb(aMagCol.y);
 }

@@ -3,17 +3,20 @@
 // without network or permission still uses it. On a Pi kiosk geolocation is usually
 // unavailable (no Wi-Fi positioning key in Chromium builds), so the config address applies.
 import { config } from './config';
+import { estimateLightPollution, type City } from './cities';
 
 export interface Place {
   lat: number;
   lon: number;
   timeZone: string;
-  source: 'config' | 'browser' | 'cached';
+  source: 'config' | 'browser' | 'cached' | 'city';
+  name?: string;
   accuracyM?: number;
   updatedAt?: number;
 }
 
 const KEY = 'skylight.location.v1';
+const CITY_KEY = 'skylight.city.v1'; // a city picked in the dev panel (overrides the browser fix)
 // The fallback location: whatever config holds when first asked (after any URL override).
 let fallback: Place | null = null;
 function defaultPlace(): Place {
@@ -32,6 +35,8 @@ function apply(p: Place): void {
   config.location.lat = p.lat;
   config.location.lon = p.lon;
   config.location.timeZone = p.timeZone;
+  // Sky darkness follows the location (Clear Night mode overrides it with a dark sky).
+  config.lightPollution = estimateLightPollution(p.lat, p.lon);
   if (moved) listeners.forEach((l) => l(p));
 }
 
@@ -82,6 +87,12 @@ function locate(prompt: boolean): Promise<boolean> {
  */
 /** Synchronously apply the last browser fix, so the very first weather request uses it. */
 export function loadCachedPlace(enabled: boolean): void {
+  // A city chosen in the panel wins over everything else.
+  try {
+    const cr = localStorage.getItem(CITY_KEY);
+    if (cr) { const c = JSON.parse(cr) as Place; if (Number.isFinite(c.lat)) { apply(c); return; } }
+  } catch { /* ignore */ }
+  config.lightPollution = estimateLightPollution(config.location.lat, config.location.lon);
   if (!enabled) return;
   try {
     const raw = localStorage.getItem(KEY);
@@ -93,7 +104,7 @@ export function loadCachedPlace(enabled: boolean): void {
 }
 
 export async function initLocation(enabled: boolean): Promise<void> {
-  if (!enabled) return;
+  if (!enabled || current?.source === 'city') return;
   let state: PermissionState | 'unknown' = 'unknown';
   try {
     state = (await navigator.permissions.query({ name: 'geolocation' as PermissionName })).state;
@@ -105,11 +116,19 @@ export async function initLocation(enabled: boolean): Promise<void> {
 
 /** Dev panel: ask now (re-prompts only if the browser allows it). */
 export function useMyLocation(): Promise<boolean> {
+  try { localStorage.removeItem(CITY_KEY); } catch { /* ignore */ }
   return locate(true);
+}
+
+/** Dev panel: jump to a city (persists until 'Use my location' or 'Reset'). */
+export function setCity(c: City): void {
+  const p: Place = { lat: c.lat, lon: c.lon, timeZone: c.tz, source: 'city', name: c.name, updatedAt: Date.now() };
+  try { localStorage.setItem(CITY_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+  apply(p);
 }
 
 /** Dev panel: forget the browser fix and go back to the configured address. */
 export function resetLocation(): void {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(KEY); localStorage.removeItem(CITY_KEY); } catch { /* ignore */ }
   apply(defaultPlace());
 }

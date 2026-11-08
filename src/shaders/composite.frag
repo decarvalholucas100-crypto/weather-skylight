@@ -17,7 +17,9 @@ uniform vec3 uMoonColor;    // lit-side moon color (display units, pre-brightnes
 uniform float uMoonRadius;  // angular radius, radians
 uniform float uPixelAngle;  // angular size of one output pixel, radians
 uniform float uMoonGlowAmt; // aureole strength (moon brightness x night)
-uniform vec3 uGlassTint;    // light picked up by the water film
+uniform vec3 uGlassTint;
+uniform mat3 uWorldToEq;    // world (ENU) -> equatorial, rotates with sidereal time
+uniform float uMilkyWay;    // visibility: night x dark sky x clear    // light picked up by the water film
 
 // ---- static droplets: land at random times, sit, slowly shrink ----
 // Returns xy: surface slope (for refraction), z: coverage mask.
@@ -159,6 +161,27 @@ vec4 moonShade(vec2 s, vec3 tx, vec3 ty) {
 }
 
 // Returns moon color (rgb) and coverage (a); the glow is added separately.
+// The Milky Way: a soft band along the galactic plane, brightest toward the galactic centre
+// (Sagittarius), broken up by dust lanes (the Great Rift). Placed from the real galactic
+// coordinate frame, so it sits and rotates exactly where it does in the real sky.
+vec3 milkyWay(vec3 rd) {
+  vec3 eq = uWorldToEq * rd;
+  // Galactic north pole (RA 192.86, Dec 27.13) and centre (RA 266.40, Dec -28.94), J2000.
+  const vec3 NGP = vec3(-0.8676, -0.1981, 0.4560);
+  const vec3 GC = vec3(-0.0549, -0.8734, -0.4838);
+  float b = asin(clamp(dot(eq, NGP), -1.0, 1.0));           // galactic latitude
+  vec3 inPlane = normalize(eq - NGP * dot(eq, NGP) + 1e-6);
+  float l = atan(dot(inPlane, cross(NGP, GC)), dot(inPlane, GC)); // galactic longitude, 0 at centre
+  vec2 g = vec2(l, b);
+  float width = mix(0.17, 0.09, smoothstep(0.0, 2.5, abs(l)));      // bulge is fatter
+  float band = exp(-(b * b) / (width * width));
+  float core = mix(0.35, 1.0, exp(-(l * l) / 1.2));                 // brighter toward Sagittarius
+  float clumps = 0.55 + 0.45 * vnoise(g * vec2(9.0, 18.0)) * vnoise(g * vec2(23.0, 40.0) + 3.0);
+  float rift = 1.0 - 0.7 * smoothstep(0.55, 0.85, vnoise(g * vec2(6.0, 30.0) + 7.0)) * exp(-(b * b) / 0.003) * step(abs(l), 1.6);
+  float glow = band * core * clumps * rift;
+  return vec3(0.75, 0.78, 0.9) * glow * 0.26;
+}
+
 vec4 moon(vec3 rd, out vec3 glow) {
   float c = dot(rd, uMoonDir);
   float ang = acos(clamp(c, -1.0, 1.0));
@@ -213,6 +236,7 @@ void main() {
   vec3 col = max(sky.rgb, vec3(0.0));
 
   vec3 rd = viewDir(vUv);
+  if (uMilkyWay > 0.001) col += milkyWay(rd) * uMilkyWay * sky.a;
   // The moon covers the sky behind it (dimmed by any cloud in front); its glow adds on top.
   vec3 mglow;
   vec4 mn = moon(rd, mglow);

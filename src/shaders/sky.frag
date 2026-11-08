@@ -63,7 +63,10 @@ float layerThick() { return baseThick() + uTowers * 3200.0; }
 
 float coverageAt(vec2 xz) {
   vec2 w = xz + uWindLow;
-  float wm = texture(uNoise, vec3(w / 19200.0, 0.13)).a * 0.6 + texture(uNoise, vec3(w / 6400.0, 0.57)).a * 0.4;
+  // Three non-aligned scales (all divide the 76.8 km wrap period) so the coverage map never
+  // reads as a repeating tile.
+  float wm = texture(uNoise, vec3(w / 19200.0, 0.13)).a * 0.5 + texture(uNoise, vec3(w / 7680.0, 0.57)).a * 0.3
+           + texture(uNoise, vec3(w / 76800.0, 0.81)).a * 0.2;
   float c = pow(uCoverLow, 1.4);
   float cov = saturate(c + (wm - 0.5) * 1.6 * (1.0 - c * c));
   return cov * smoothstep(0.0, 0.12, c);
@@ -90,8 +93,9 @@ float cloudDensity(vec3 p, float hf, bool detail) {
   vec3 q = vec3(p.xy + uWindLow, p.z) ;
   float evolve = uTime * 0.0008; // uTime wraps every 1250 s; keeps noise periodic
   // Two scales of billows: big cloud masses plus smaller lumps riding on them.
-  float base = texture(uNoise, q / 1600.0 + vec3(0.0, 0.0, evolve)).r * 0.72
-             + texture(uNoise, q / 640.0 + vec3(0.37, 0.11, evolve * 2.0)).r * 0.28;
+  float base = texture(uNoise, q / 2400.0 + vec3(0.0, 0.0, evolve)).r * 0.6
+             + texture(uNoise, q / 1280.0 + vec3(0.37, 0.11, evolve * 1.5)).r * 0.25
+             + texture(uNoise, q / 600.0 + vec3(0.71, 0.53, evolve * 2.0)).r * 0.15;
   base = saturate(remap(base, 0.08, 0.92, 0.0, 1.0));
   // Overcast decks: an undulating base gives the rolling light/dark texture of a stratus ceiling.
   float deckness = saturate(uCoverLow * 1.5 - 0.6 + uStorm * 0.5);
@@ -106,7 +110,7 @@ float cloudDensity(vec3 p, float hf, bool detail) {
   if (d <= 0.0) return 0.0;
   if (detail) {
     // Domain-warped detail: swirls the erosion noise so edges turn wispy instead of blobby.
-    vec3 dq = q / 320.0 + vec3(0.0, 0.0, evolve * 3.0);
+    vec3 dq = q / 384.0 + vec3(0.0, 0.0, evolve * 3.0);
     vec3 warp = texture(uNoise, q / 900.0 + vec3(0.5, 0.0, evolve)).rga - 0.5;
     dq += warp * 0.35;
     vec3 dn = texture(uNoise, dq).gba;
@@ -365,7 +369,7 @@ void main() {
   transm *= mid.a;
 
 #if CLOUD_STEPS > 0
-  vec4 low = uCoverLow > 0.005 ? marchLow(rd, fract(ign(gl_FragCoord.xy) + uFrame * 0.618034)) : vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 low = uCoverLow > 0.005 ? marchLow(rd, fract(hash33(vec3(gl_FragCoord.xy, 3.0)).x + uFrame * 0.618034)) : vec4(0.0, 0.0, 0.0, 1.0);
 #else
   vec4 low = uCoverLow > 0.005 ? flatLow(rd) : vec4(0.0, 0.0, 0.0, 1.0);
 #endif
@@ -392,9 +396,13 @@ void main() {
   col = pow(col, vec3(1.0 / 2.2));
   // Temporal accumulation: each frame uses a different ray offset; blending frames removes
   // raymarch noise. Clouds move slowly, so the history barely smears.
-  vec2 puv = vUv - uHistShift;
+  // Only low clouds move at the low layer's speed; elsewhere (sky, cirrus) don't shift.
+  vec2 puv = vUv - uHistShift * (1.0 - low.a);
   vec4 prev = texture(uPrev, puv);
   // Off-screen history is unusable: fall back to the current frame there.
   float inside = step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0);
-  outColor = mix(vec4(col, transm), prev, uHistory * inside);
+  // Anti-ghosting: where this frame differs sharply from history, trust this frame.
+  float diff = length(col - prev.rgb);
+  float keep = uHistory * inside * (1.0 - smoothstep(0.25, 0.6, diff));
+  outColor = mix(vec4(col, transm), prev, keep);
 }
