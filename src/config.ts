@@ -45,13 +45,13 @@ export const config = {
   /** Soft darkening toward the screen edges, like looking up a skylight well. 0 = off. */
   vignette: 0.18,
   /** Draw the moon slightly larger than true size (it looks bigger to people than to cameras). */
-  moonScale: 1.5,
+  moonScale: 2.0,
 
   /** Light pollution, 0 = desert, 1 = Times Square. New York metro is roughly Bortle 8. */
   lightPollution: 0.8,
 
   quality: {
-    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 56, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560 },
+    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 6, skySamples: 16, outputMaxWidth: 2560 },
     medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280 },
     low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960 },
   } satisfies Record<QualityName, QualityPreset>,
@@ -59,6 +59,9 @@ export const config = {
   defaultQuality: 'high' as QualityName,
   defaultMode: 'live' as ModeName,
   modeOrder: ['live', 'sunny', 'clearNight', 'cloudyNight', 'golden', 'storm'] as ModeName[],
+
+  /** Dynamic resolution: lower the sky's render size when FPS drops below target, raise it when above. */
+  targetFps: { high: 55, medium: 28, low: 28 } as Record<QualityName, number>,
 
   brightness: { initial: 1.0, step: 0.1, min: 0.2, max: 1.6 },
 

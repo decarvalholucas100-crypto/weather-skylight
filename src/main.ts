@@ -4,6 +4,7 @@ import { config, type ModeName, type QualityName } from './config';
 import { attachControlSocket, attachKeyboard, CommandBus } from './input';
 import { computeLighting } from './lighting';
 import { Renderer } from './render/renderer';
+import { planetRows } from './planets';
 import { buildTarget, cloneParams, computeAstro, easeParams, MODES, type DevOverrides, type SkyParams } from './state';
 import { Ui, type UiState } from './ui';
 import { loadCachedWeather, startWeatherPolling, type Weather } from './weather';
@@ -25,6 +26,7 @@ if (numParam('t') !== undefined) clock.setTimeOfDay(numParam('t')!);
 if (numParam('speed') !== undefined) clock.timeScale = numParam('speed')!;
 const urlMode = qs.get('mode') as ModeName | null;
 const urlQuality = qs.get('q') as QualityName | null;
+if (numParam('fov') !== undefined) config.fovDeg = numParam('fov')!;
 
 const state: UiState = {
   mode: urlMode && urlMode in MODES ? urlMode : config.defaultMode,
@@ -148,6 +150,7 @@ function frame(): void {
   // Sun/moon: recompute ~10x per second (cheap, and they move slowly).
   if (now - lastAstro > 100 || clock.timeScale > 1) {
     astro = computeAstro(clock.now());
+    renderer.setPlanets(planetRows(clock.now()));
     lastAstro = now;
   }
   const devNow = JSON.stringify(dev);
@@ -193,7 +196,7 @@ function frame(): void {
     lightLow: L.lightLow, lightMid: L.lightMid, lightHigh: L.lightHigh,
     ambTop: L.ambTop.map((v) => v + flash * 0.25) as typeof L.ambTop,
     ambBottom: L.ambBottom,
-    sunDisk: L.sunDisk, nightSky: L.nightSky, moonGlow: L.moonGlow, moonColor: L.moonColor,
+    sunDisk: L.sunDisk, nightSky: L.nightSky, moonGlow: L.moonGlow, moonColor: L.moonColor, moonGlowAmt: L.moonGlowAmt,
     fogColor: L.fogColor.map((v) => v + flash * 0.15) as typeof L.fogColor,
     glassTint: L.glassTint,
     exposure: L.exposure, mieScale: L.mieScale,
@@ -207,9 +210,17 @@ function frame(): void {
     starLimitMag: L.starLimitMag, starVis: L.starVis,
   });
 
-  // FPS + overlay
+  // FPS + overlay + dynamic resolution
   frames++; fpsAcc += dt;
-  if (fpsAcc >= 0.5) { fps = frames / fpsAcc; frames = 0; fpsAcc = 0; }
+  if (fpsAcc >= 0.5) {
+    fps = frames / fpsAcc; frames = 0; fpsAcc = 0;
+    if (!document.hidden && now > 4000) {
+      const target = config.targetFps[state.quality];
+      const k = renderer.dynamicScale;
+      if (fps < target * 0.9) renderer.setDynamicScale(k * 0.9);
+      else if (fps > target * 1.12 && k < 1) renderer.setDynamicScale(k * 1.05);
+    }
+  }
   if (ui.debugVisible && frames === 0) {
     const [iw, ih] = renderer.internalSize;
     const w = weather;
@@ -217,7 +228,7 @@ function frame(): void {
       `version    v${__APP_VERSION__}  build ${__BUILD_SHA__}  ${__BUILD_TIME__}`,
       `fps        ${fps.toFixed(1)}`,
       `mode       ${MODES[state.mode].label}   quality ${state.quality}`,
-      `output     ${renderer.outW}x${renderer.outH}   sky ${iw}x${ih}`,
+      `output     ${renderer.outW}x${renderer.outH}   sky ${iw}x${ih} (dyn ${Math.round(renderer.dynamicScale * 100)}%)`,
       `sim time   ${clock.label()}  x${clock.timeScale}`,
       `sun alt    ${altOf(current.sunDir).toFixed(1)}°   moon ${altOf(current.moonDir).toFixed(1)}° (${Math.round(current.moonFraction * 100)}% lit)`,
       `clouds     low ${pct(current.cloudLow)} mid ${pct(current.cloudMid)} high ${pct(current.cloudHigh)} storm ${pct(current.storminess)}`,

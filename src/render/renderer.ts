@@ -7,6 +7,7 @@ import { config, type QualityPreset } from '../config';
 import type { Vec3 } from '../astro';
 import { generateCloudNoise } from './noise';
 import { buildStarBuffer } from '../stars';
+import { PLANET_COUNT } from '../planets';
 import common from '../shaders/common.glsl?raw';
 import fullscreenVert from '../shaders/fullscreen.vert?raw';
 import skyLutFrag from '../shaders/skylut.frag?raw';
@@ -28,6 +29,7 @@ export interface FrameUniforms {
   nightSky: Vec3;
   moonGlow: Vec3;
   moonColor: Vec3;
+  moonGlowAmt: number;
   fogColor: Vec3;
   glassTint: Vec3;
   exposure: number;
@@ -99,6 +101,8 @@ export class Renderer {
   private vao!: WebGLVertexArrayObject;
   private starVao!: WebGLVertexArrayObject;
   private starCount = 0;
+  private starBuf!: WebGLBuffer;
+  private planetOffset = 0;
   private noiseTex!: WebGLTexture;
   private lutTex!: WebGLTexture;
   private lutFbo!: WebGLFramebuffer;
@@ -112,6 +116,8 @@ export class Renderer {
   private skyW = 0;
   private skyH = 0;
   private readonly lutSize = 128;
+  /** Dynamic resolution factor (0.55..1) applied on top of the preset's render scale. */
+  private dynScale = 1;
   outW = 0;
   outH = 0;
   private tanHalf: [number, number] = [1, 1];
@@ -150,12 +156,17 @@ export class Renderer {
 
     // Stars
     const { data: starData, count } = buildStarBuffer();
-    this.starCount = count;
+    // Planets ride at the end of the star buffer and are updated as they move.
+    this.starCount = count + PLANET_COUNT;
+    this.planetOffset = count * 20;
+    const all = new Float32Array((count + PLANET_COUNT) * 5);
+    all.set(starData);
     this.starVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.starVao);
     const buf = gl.createBuffer()!;
+    this.starBuf = buf;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, starData, gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, all, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
     gl.enableVertexAttribArray(1);
@@ -170,6 +181,18 @@ export class Renderer {
     this.sky = program(gl, fullscreenVert, frag({ CLOUD_STEPS: q.cloudSteps, LIGHT_STEPS: Math.max(1, q.lightSteps) }, skyFrag));
     this.comp = program(gl, fullscreenVert, frag({}, compositeFrag));
     this.stars = program(gl, starsVert, frag({}, starsFrag));
+  }
+
+  /** Adjust dynamic resolution; only rebuilds targets when the change is meaningful. */
+  setDynamicScale(k: number): void {
+    const v = Math.min(1, Math.max(0.55, k));
+    if (Math.abs(v - this.dynScale) < 0.04) return;
+    this.dynScale = v;
+    this.resize(true);
+  }
+
+  get dynamicScale(): number {
+    return this.dynScale;
   }
 
   setQuality(q: QualityPreset): void {
@@ -211,8 +234,9 @@ export class Renderer {
     this.outW = w; this.outH = h;
     this.canvas.width = w; this.canvas.height = h;
 
-    let sw = Math.max(64, Math.round(w * this.quality.renderScale));
-    let sh = Math.max(36, Math.round(h * this.quality.renderScale));
+    const scale = this.quality.renderScale * this.dynScale;
+    let sw = Math.max(64, Math.round(w * scale));
+    let sh = Math.max(36, Math.round(h * scale));
     if (sw > this.quality.maxInternalWidth) { sh = Math.round((sh * this.quality.maxInternalWidth) / sw); sw = this.quality.maxInternalWidth; }
     this.skyW = sw; this.skyH = sh;
     const gl = this.gl;
@@ -240,6 +264,14 @@ export class Renderer {
     const gl = this.gl;
     gl.uniform2f(u.uTanHalf, this.tanHalf[0], this.tanHalf[1]);
     gl.uniformMatrix3fv(u.uCamRot, false, this.camRot);
+  }
+
+  /** Update planet positions: rows of [eqX, eqY, eqZ, mag, bv]. */
+  setPlanets(rows: number[]): void {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, this.planetOffset, new Float32Array(rows));
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
   }
 
   render(f: FrameUniforms): void {
@@ -323,6 +355,8 @@ export class Renderer {
     gl.uniform3fv(u.uSunDir, f.sunDir);
     gl.uniform3fv(u.uMoonColor, f.moonColor);
     gl.uniform1f(u.uMoonRadius, 0.00452 * config.moonScale);
+    gl.uniform1f(u.uPixelAngle, (2 * this.tanHalf[1]) / this.outH);
+    gl.uniform1f(u.uMoonGlowAmt, f.moonGlowAmt);
     gl.uniform3fv(u.uGlassTint, f.glassTint);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -335,6 +369,7 @@ export class Renderer {
       this.setCamera(u);
       gl.uniformMatrix3fv(u.uWorldToEq, false, f.worldToEq);
       gl.uniform1f(u.uLimitMag, f.starLimitMag);
+      gl.uniform1i(u.uPlanetStart, this.planetOffset / 20);
       gl.uniform1f(u.uPxScale, Math.max(1, this.outH / 1080) * 1.0);
       gl.uniform1f(u.uTime, f.realTime);
       gl.uniform1i(u.uSky, 0);

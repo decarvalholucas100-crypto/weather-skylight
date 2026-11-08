@@ -10,6 +10,7 @@ uniform vec2 uTanHalf;
 uniform float uLimitMag;
 uniform float uPxScale;  // point size scale (resolution dependent)
 uniform float uTime;
+uniform int uPlanetStart;  // vertices from here on are planets: steady light, no twinkle
 
 out vec3 vColor;
 out float vBright;
@@ -36,7 +37,7 @@ void main() {
   gl_Position = vec4(s, 0.0, 1.0);
   // Brightness from magnitude (each magnitude is 2.512x), with gentle scintillation.
   float flux = pow(2.512, -mag + 1.0);
-  float tw = 1.0 + 0.18 * sin(uTime * (7.0 + fract(aEq.x * 911.0) * 9.0) + aEq.y * 400.0);
+  float tw = gl_VertexID >= uPlanetStart ? 1.0 : 1.0 + 0.18 * sin(uTime * (7.0 + fract(aEq.x * 911.0) * 9.0) + aEq.y * 400.0);
   vBright = min(4.0, flux * 2.4 + 0.45) * vis * tw;
   gl_PointSize = uPxScale * (5.0 + 5.0 * clamp(1.6 - mag * 0.55, 0.0, 2.4));
   vColor = bvToRgb(aMagCol.y);

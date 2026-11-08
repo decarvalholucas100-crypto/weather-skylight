@@ -27,6 +27,7 @@ export interface Lighting {
   nightSky: Vec3;
   moonGlow: Vec3;
   moonColor: Vec3;
+  moonGlowAmt: number;
   fogColor: Vec3;
   glassTint: Vec3;
   starLimitMag: number;
@@ -88,7 +89,9 @@ export function computeLighting(p: SkyParams): Lighting {
   const sunGround = sunlightAt(20, p.sunDir, mieScale);
   const sunDisk = scale(sunGround, exposure * 60 * (1 - 0.7 * deck));
 
-  const moonColor: Vec3 = scale([1.0, 0.97, 0.9], 0.3 + 1.1 * night);
+  // Keep the moon under display white so its surface detail survives (no clipping).
+  const moonColor: Vec3 = scale([1.0, 0.97, 0.9], 0.35 + 0.42 * night);
+  const moonGlowAmt = moonLightAmt * night * (1 + p.haze * 2);
   const moonGlow = scale([0.6, 0.65, 0.8], 0.05 * moonLightAmt * night * (1 + p.haze * 3));
 
   const fogColor0 = mix(scale(ambTop, 0.6 * (1 - 0.35 * p.storminess)), add(scale(ambBottom, 1.2), scale(cityGlow, 0.05)), 0.3 * (1 - p.storminess * 0.6));
@@ -103,7 +106,7 @@ export function computeLighting(p: SkyParams): Lighting {
   return {
     exposure, mieScale, lightDir,
     lightLow: add(sunLow, moonLight), lightMid: add(sunMid, moonLight), lightHigh: add(sunHigh, scale(moonLight, 1.2)),
-    ambTop, ambBottom, sunDisk, nightSky, moonGlow, moonColor, fogColor, glassTint,
+    ambTop, ambBottom, sunDisk, nightSky, moonGlow, moonColor, moonGlowAmt, fogColor, glassTint,
     starLimitMag, starVis, night,
   };
 }

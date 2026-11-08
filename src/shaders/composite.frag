@@ -15,6 +15,8 @@ uniform vec3 uMoonDir;
 uniform vec3 uSunDir;
 uniform vec3 uMoonColor;    // lit-side moon color (display units, pre-brightness)
 uniform float uMoonRadius;  // angular radius, radians
+uniform float uPixelAngle;  // angular size of one output pixel, radians
+uniform float uMoonGlowAmt; // aureole strength (moon brightness x night)
 uniform vec3 uGlassTint;    // light picked up by the water film
 
 // ---- static droplets: land at random times, sit, slowly shrink ----
@@ -99,37 +101,56 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-vec3 moon(vec3 rd) {
+// Shade one point on the moon's disk. s: position on the disk in moon radii.
+// Returns lit color (rgb) and disk coverage (a).
+vec4 moonShade(vec2 s, vec3 tx, vec3 ty) {
+  float r2 = dot(s, s);
+  if (r2 >= 1.0) return vec4(0.0);
+  vec3 n = normalize(s.x * tx + s.y * ty - sqrt(1.0 - r2) * uMoonDir); // faces the viewer
+  // Phase falls out of real geometry: the side facing the sun is lit. Soft terminator.
+  float lit = smoothstep(-0.05, 0.16, dot(n, uSunDir));
+  // Maria (the dark "seas"), laid out roughly like the real near side. Warp the lookup so
+  // their outlines are irregular rather than circles.
+  vec2 sw = s + (vec2(vnoise(s * 4.0 + 3.1), vnoise(s * 4.0 + 7.7)) - 0.5) * 0.22;
+  float maria = 0.0;
+  maria = max(maria, smoothstep(0.38, 0.18, length((sw - vec2(-0.55, 0.05)) * vec2(0.8, 1.0))) * 0.75); // Procellarum
+  maria = max(maria, smoothstep(0.27, 0.12, length(sw - vec2(-0.3, 0.45))));                           // Imbrium
+  maria = max(maria, smoothstep(0.17, 0.07, length(sw - vec2(0.08, 0.45))));                           // Serenitatis
+  maria = max(maria, smoothstep(0.22, 0.09, length(sw - vec2(0.24, 0.15))));                           // Tranquillitatis
+  maria = max(maria, smoothstep(0.12, 0.05, length(sw - vec2(0.64, 0.33))));                           // Crisium
+  maria = max(maria, smoothstep(0.2, 0.08, length(sw - vec2(-0.2, -0.33))) * 0.8);                     // Nubium
+  maria = max(maria, smoothstep(0.16, 0.06, length(sw - vec2(0.5, -0.08))) * 0.85);                    // Fecunditatis
+  maria *= 0.75 + 0.5 * vnoise(s * 7.0);
+  float albedo = mix(1.0, 0.5, saturate(maria));
+  albedo *= 0.9 + 0.12 * vnoise(s * 18.0) + 0.06 * vnoise(s * 41.0);
+  albedo += 0.35 * smoothstep(0.06, 0.0, length(s - vec2(-0.12, -0.72)));                             // Tycho
+  float limb = 0.78 + 0.22 * sqrt(1.0 - r2);
+  // Coverage follows the lit part, so the dark side melts into the sky (plus faint earthshine).
+  // Premultiplied: coverage follows the lit part so the dark side melts into the sky,
+  // apart from a faint earthshine.
+  return vec4(uMoonColor * albedo * limb * lit + uMoonColor * 0.012, lit);
+}
+
+// Returns moon color (rgb) and coverage (a); the glow is added separately.
+vec4 moon(vec3 rd, out vec3 glow) {
   float c = dot(rd, uMoonDir);
   float ang = acos(clamp(c, -1.0, 1.0));
-  if (ang > uMoonRadius * 1.6) return vec3(0.0);
-  // Build a tangent frame around the moon direction and reconstruct the sphere normal.
+  // Soft full-resolution aureole, scaled by how lit the moon is.
+  float glowR = uMoonRadius * 4.0;
+  glow = uMoonColor * uMoonGlowAmt * (0.08 * exp(-(ang * ang) / (glowR * glowR)) + 0.025 * exp(-ang / (glowR * 3.0)));
+  if (ang > uMoonRadius * 1.5) return vec4(0.0);
   vec3 up = abs(uMoonDir.z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
   vec3 tx = normalize(cross(up, uMoonDir));
   vec3 ty = cross(uMoonDir, tx);
-  vec2 s = vec2(dot(rd, tx), dot(rd, ty)) / sin(uMoonRadius);
-  float r2 = dot(s, s);
-  // Anti-aliased limb: soften over about one screen pixel, whatever the moon's size.
-  float rr = sqrt(r2);
-  float aa = max(fwidth(rr) * 1.2, 0.01);
-  float edge = smoothstep(1.0, 1.0 - aa, rr);
-  if (rr >= 1.0) return vec3(0.0);
-  r2 = min(r2, 0.9999);
-  vec3 n = normalize(s.x * tx + s.y * ty - sqrt(1.0 - r2) * uMoonDir); // faces the viewer
-  // Phase falls out of real geometry: the side facing the sun is lit.
-  float lit = smoothstep(-0.04, 0.12, dot(n, uSunDir));
-  // Maria: low-frequency dark patches, fixed to the moon's face.
-  vec2 m = s * 2.2;
-  float maria = 0.0;
-  maria += smoothstep(0.55, 0.15, length(m - vec2(-0.45, 0.55))) * 0.35;
-  maria += smoothstep(0.65, 0.2, length(m - vec2(0.35, 0.35))) * 0.3;
-  maria += smoothstep(0.5, 0.1, length(m - vec2(0.1, -0.5))) * 0.25;
-  maria += smoothstep(0.45, 0.1, length(m - vec2(-0.6, -0.3))) * 0.2;
-  // Smooth fine mottling (value noise) instead of blocky per-cell hash.
-  float tex = 1.0 - maria + (vnoise(s * 9.0) - 0.5) * 0.08 + (vnoise(s * 23.0) - 0.5) * 0.04;
-  float limb = 0.75 + 0.25 * sqrt(1.0 - r2);
-  vec3 earthshine = uMoonColor * 0.012;
-  return (uMoonColor * lit * tex * limb + earthshine) * edge;
+  float sr = sin(uMoonRadius);
+  vec2 s = vec2(dot(rd, tx), dot(rd, ty)) / sr;
+  // 4x4 supersampling across the pixel footprint: smooth limb and terminator at any size.
+  float px = uPixelAngle / sr;
+  vec4 acc = vec4(0.0);
+  for (int i = 0; i < 4; i++)
+    for (int j = 0; j < 4; j++)
+      acc += moonShade(s + (vec2(float(i), float(j)) - 1.5) * 0.25 * px, tx, ty);
+  return acc / 16.0;
 }
 
 void main() {
@@ -161,9 +182,15 @@ void main() {
   vec2 uv = vUv - offset * vec2(1.0 / aspect.x, 1.0) * 0.022;
   vec4 sky = textureLod(uSky, uv, lod);
   vec3 col = sky.rgb;
+  // Gentle unsharp mask: restores crispness lost when upscaling the reduced-resolution sky.
+  vec3 soft = textureLod(uSky, uv, lod + 1.5).rgb;
+  col = max(vec3(0.0), col + (col - soft) * 0.35 * (1.0 - saturate(lod)));
 
   vec3 rd = viewDir(vUv);
-  col += moon(rd) * sky.a;
+  // The moon covers the sky behind it (dimmed by any cloud in front); its glow adds on top.
+  vec3 mglow;
+  vec4 mn = moon(rd, mglow);
+  col = col * (1.0 - mn.a * sky.a * 0.8) + (mn.rgb + mglow) * sky.a;
 
   if (uWet > 0.01) {
     col = mix(col, col * 0.55, rim * 0.6);                                  // dark refracting rims
