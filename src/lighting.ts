@@ -1,0 +1,105 @@
+// Turns SkyParams into the lighting terms the shaders need. Physical terms (sun, sky) come
+// from the atmosphere model and are scaled by an auto-exposure that mimics how your eyes adapt.
+// Night terms (moonlight, city glow, starlight) are added in display units on top.
+import { altOf, type Vec3 } from './astro';
+import { luminance, sunlightAt, zenithRadiance } from './atmosphere';
+import { config } from './config';
+import type { SkyParams } from './state';
+
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+const scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
+const add = (...vs: Vec3[]): Vec3 => vs.reduce<Vec3>((a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], [0, 0, 0]);
+const mix = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+export interface Lighting {
+  exposure: number;
+  mieScale: number;
+  lightDir: Vec3;
+  lightLow: Vec3;
+  lightMid: Vec3;
+  lightHigh: Vec3;
+  ambTop: Vec3;
+  ambBottom: Vec3;
+  sunDisk: Vec3;
+  nightSky: Vec3;
+  moonGlow: Vec3;
+  moonColor: Vec3;
+  fogColor: Vec3;
+  glassTint: Vec3;
+  starLimitMag: number;
+  starVis: number;
+  night: number;
+}
+
+export function computeLighting(p: SkyParams): Lighting {
+  const sunAlt = altOf(p.sunDir);
+  const moonAlt = altOf(p.moonDir);
+  const mieScale = 1 + p.haze * 8 + p.rain * 3;
+  const lp = config.lightPollution;
+
+  const zen = zenithRadiance(p.sunDir, mieScale);
+  const zenL = luminance(zen);
+  // Partial eye adaptation: twilight gets brighter than physical but still reads as dusk.
+  const exposure = Math.min(1.1 / Math.pow(zenL + 1e-6, 0.78), 2500) * 0.3;
+
+  const night = smooth(-4, -14, sunAlt); // 0 = day, 1 = full night
+  const moonUp = smooth(-2, 8, moonAlt);
+  const moonLightAmt = p.moonFraction * moonUp;
+
+  // Overcast skies are much darker beneath: thick decks absorb most light.
+  const deck = Math.max(0, p.cloudLow - 0.6) / 0.4;
+  const dim = 1 - 0.45 * deck * (0.4 + 0.6 * p.storminess);
+
+  // Direct sunlight on clouds adapts less than the sky does, so low-sun clouds stay orange
+  // instead of blowing out to yellow-white.
+  const sunExp = Math.min(exposure, 2.4);
+  const sunLow = scale(sunlightAt(1500, p.sunDir, mieScale), sunExp * dim);
+  const sunMid = scale(sunlightAt(4600, p.sunDir, mieScale), sunExp);
+  const sunHigh = scale(sunlightAt(9000, p.sunDir, mieScale), Math.min(exposure, 6));
+
+  // Moonlight takes over as the cloud light source once the sun is well below the horizon.
+  const moonW = smooth(-5, -10, sunAlt) * moonLightAmt;
+  const moonLight: Vec3 = scale([0.55, 0.6, 0.72], 0.32 * moonW);
+  const useMoon = sunAlt < -5;
+  const lightDir = useMoon ? p.moonDir : p.sunDir;
+
+  // City light (sodium + LED mix): warm orange-pink, reflected by cloud bases.
+  const cityGlow: Vec3 = scale([1.0, 0.58, 0.36], lp * night);
+
+  // Under a thick deck, skylight turns gray (no blue sky visible above the clouds).
+  const zl = luminance(zen);
+  const zenGray = mix(zen, [zl, zl, zl * 1.05], Math.min(1, deck * 0.9 + p.rain * 0.5));
+  const ambTopDay = scale(zenGray, exposure * 1.7 * dim);
+  const ambTop = add(ambTopDay, scale([0.05, 0.07, 0.12], night * (0.25 + moonLightAmt)), scale(cityGlow, 0.03));
+  const groundBounce = scale(sunlightAt(20, p.sunDir, mieScale), exposure * Math.max(0, p.sunDir[2]) * 0.012 * dim);
+  const ambBottom = add(groundBounce, scale(ambTopDay, 0.18), scale(cityGlow, 0.32 * (0.6 + 0.4 * p.cloudLow)));
+
+  const nightSky = add(
+    scale([0.006, 0.009, 0.02], night),
+    scale([0.035, 0.026, 0.024], lp * night), // skyglow
+    scale([0.012, 0.022, 0.05], night * moonLightAmt), // moonlit sky turns deep blue
+  );
+
+  const sunGround = sunlightAt(20, p.sunDir, mieScale);
+  const sunDisk = scale(sunGround, exposure * 60 * (1 - 0.7 * deck));
+
+  const moonColor: Vec3 = scale([1.0, 0.97, 0.9], 0.3 + 1.1 * night);
+  const moonGlow = scale([0.6, 0.65, 0.8], 0.05 * moonLightAmt * night * (1 + p.haze * 3));
+
+  const fogColor = mix(scale(ambTop, 0.6 * (1 - 0.35 * p.storminess)), add(scale(ambBottom, 1.2), scale(cityGlow, 0.05)), 0.3 * (1 - p.storminess * 0.6));
+  const glassTint = add(scale(ambTop, 0.6), scale(cityGlow, 0.05), [0.02, 0.02, 0.025]);
+
+  // Stars: NYC washes out all but the brightest. Moon, haze and twilight dim further.
+  const starLimitMag = 6.4 - 3.4 * lp - 1.2 * moonLightAmt - 2.5 * p.haze - 3 * (1 - smooth(-8, -16, sunAlt));
+  const starVis = smooth(-4, -11, sunAlt);
+
+  return {
+    exposure, mieScale, lightDir,
+    lightLow: add(sunLow, moonLight), lightMid: add(sunMid, moonLight), lightHigh: add(sunHigh, scale(moonLight, 1.2)),
+    ambTop, ambBottom, sunDisk, nightSky, moonGlow, moonColor, fogColor, glassTint,
+    starLimitMag, starVis, night,
+  };
+}
