@@ -50,6 +50,10 @@ export const MODES: Record<ModeName, ModeSpec> = {
     label: 'Always Sunny', sun: 'real', moon: 'real',
     weather: { cloudLow: 0.0, cloudMid: 0, cloudHigh: 0.08, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 4, windY: 1 },
   },
+  partly: {
+    label: 'Partly Cloudy', sun: 'real', moon: 'real',
+    weather: { cloudLow: 0.28, cloudMid: 0, cloudHigh: 0.12, storminess: 0, rain: 0, haze: 0.06, lightning: 0, windX: 5, windY: 2, lowBase: 1300, convective: 0.85, towers: 0 },
+  },
   clearNight: {
     label: 'Clear Night', sun: { alt: -32, az: 0 }, moon: 'visible',
     weather: { cloudLow: 0, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 2, windY: 1 },

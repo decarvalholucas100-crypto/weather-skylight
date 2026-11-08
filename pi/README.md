@@ -43,8 +43,14 @@ encoder for brightness and modes.
   Override with `SKYLIGHT_URL=... ` in `~/.config/labwc/autostart`.
   - `q=medium` is the Pi quality preset; `q=low` is the fallback if the frame rate is poor.
   - `ws=1` connects to the local encoder bridge.
-  - `geo=0` skips browser geolocation (a kiosk can't answer the permission prompt); the
-    location in `src/config.ts` is used instead.
+  - `geo=0` skips browser geolocation (a kiosk can't answer the permission prompt).
+- **Location** (kept on the Pi, never in the repo): create `~/.config/skylight.env` with
+  ```sh
+  SKYLIGHT_LAT=40.71
+  SKYLIGHT_LON=-74.01
+  SKYLIGHT_TZ=America/New_York
+  ```
+  Two decimals (about 1 km) is plenty.
 - **LED wall (e.g. 384×240)**: set the Pi's HDMI output to the wall's input resolution; the app
   renders at the output size automatically, so a small wall costs very little GPU.
 - **Pins / port**: `SKY_PIN_A`, `SKY_PIN_B`, `SKY_PIN_SW`, `SKY_PORT` environment variables in

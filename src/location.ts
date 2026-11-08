@@ -14,18 +14,19 @@ export interface Place {
 }
 
 const KEY = 'skylight.location.v1';
-const DEFAULT: Place = {
-  lat: config.location.lat,
-  lon: config.location.lon,
-  timeZone: config.location.timeZone,
-  source: 'config',
-};
+// The fallback location: whatever config holds when first asked (after any URL override).
+let fallback: Place | null = null;
+function defaultPlace(): Place {
+  if (!fallback) fallback = { lat: config.location.lat, lon: config.location.lon, timeZone: config.location.timeZone, source: 'config' };
+  return { ...fallback };
+}
 
-let current: Place = { ...DEFAULT };
+let current: Place | null = null;
 const listeners: ((p: Place) => void)[] = [];
 
 function apply(p: Place): void {
-  const moved = Math.abs(p.lat - current.lat) > 0.005 || Math.abs(p.lon - current.lon) > 0.005 || p.timeZone !== current.timeZone;
+  const cur = current ?? defaultPlace();
+  const moved = Math.abs(p.lat - cur.lat) > 0.005 || Math.abs(p.lon - cur.lon) > 0.005 || p.timeZone !== cur.timeZone;
   current = p;
   // Everything else (sun/moon, weather, sidereal time, clock) reads config.location.
   config.location.lat = p.lat;
@@ -35,7 +36,7 @@ function apply(p: Place): void {
 }
 
 export function getPlace(): Place {
-  return current;
+  return current ?? defaultPlace();
 }
 
 export function onPlaceChange(fn: (p: Place) => void): void {
@@ -110,5 +111,5 @@ export function useMyLocation(): Promise<boolean> {
 /** Dev panel: forget the browser fix and go back to the configured address. */
 export function resetLocation(): void {
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
-  apply({ ...DEFAULT });
+  apply(defaultPlace());
 }

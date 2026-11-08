@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Launch the skylight full-screen in Chromium kiosk mode (Raspberry Pi OS Bookworm, Wayland/labwc).
 # Started at login by ~/.config/labwc/autostart (see install.sh).
-URL="${SKYLIGHT_URL:-https://weather-skylight.vercel.app/?q=medium&ws=1&geo=0}"
+# Location stays on the device: set SKYLIGHT_LAT / SKYLIGHT_LON in ~/.config/skylight.env
+[ -f "$HOME/.config/skylight.env" ] && . "$HOME/.config/skylight.env"
+LOC=""
+[ -n "${SKYLIGHT_LAT:-}" ] && [ -n "${SKYLIGHT_LON:-}" ] && LOC="&lat=$SKYLIGHT_LAT&lon=$SKYLIGHT_LON&tz=${SKYLIGHT_TZ:-America/New_York}"
+URL="${SKYLIGHT_URL:-https://weather-skylight.vercel.app/?q=medium&ws=1&geo=0$LOC}"
 
 # Wait for the network (weather + METAR) but don't hang forever: the app works offline from cache.
 for i in $(seq 1 30); do

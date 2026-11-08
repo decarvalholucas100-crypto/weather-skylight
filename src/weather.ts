@@ -45,7 +45,8 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
     'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
     'precipitation', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'visibility', 'cape', 'lifted_index', 'temperature_2m',
   ].join(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=${vars}&wind_speed_unit=ms&timezone=auto`;
+  // Rounded to ~1 km before leaving the device: plenty for weather, less identifying.
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&current=${vars}&wind_speed_unit=ms&timezone=auto`;
   const res = await fetch(url, { signal, cache: 'no-store' });
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
   const json = await res.json();
@@ -81,7 +82,7 @@ export async function fetchMetar(signal?: AbortSignal): Promise<Metar | null> {
   try {
     const { lat, lon } = config.location;
     const sep = config.metarUrl.includes('?') ? '&' : '?';
-    const res = await fetch(`${config.metarUrl}${sep}lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`, { signal, cache: 'no-store' });
+    const res = await fetch(`${config.metarUrl}${sep}lat=${lat.toFixed(1)}&lon=${lon.toFixed(1)}`, { signal, cache: 'no-store' });
     if (!res.ok) return null;
     const m = (await res.json()) as Metar & { error?: string };
     if (m.error || !Array.isArray(m.layers)) return null;

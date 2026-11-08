@@ -1,7 +1,7 @@
 // Central configuration. Everything a person might want to tune lives here.
 
 export type QualityName = 'high' | 'medium' | 'low';
-export type ModeName = 'live' | 'sunny' | 'clearNight' | 'cloudyNight' | 'golden' | 'storm';
+export type ModeName = 'live' | 'sunny' | 'partly' | 'clearNight' | 'cloudyNight' | 'golden' | 'storm';
 
 export interface QualityPreset {
   /** Fraction of the screen resolution the sky is rendered at, then upscaled. */
@@ -20,6 +20,9 @@ export interface QualityPreset {
 
 export const config = {
   location: {
+    // Generic default only. The real location comes from the browser (asked once) or, on a
+    // kiosk, from ?lat=..&lon=.. in the URL configured on the device itself. Keep personal
+    // addresses out of this file: it ships to every browser that opens the app.
     name: 'New York City (default)',
     lat: 40.7128,
     lon: -74.006,
@@ -58,7 +61,7 @@ export const config = {
 
   defaultQuality: 'high' as QualityName,
   defaultMode: 'live' as ModeName,
-  modeOrder: ['live', 'sunny', 'clearNight', 'cloudyNight', 'golden', 'storm'] as ModeName[],
+  modeOrder: ['live', 'sunny', 'partly', 'clearNight', 'cloudyNight', 'golden', 'storm'] as ModeName[],
 
   /** Dynamic resolution: lower the sky's render size when FPS drops below target, raise it when above. */
   targetFps: { high: 55, medium: 28, low: 28 } as Record<QualityName, number>,

@@ -29,6 +29,13 @@ if (numParam('t') !== undefined) clock.setTimeOfDay(numParam('t')!);
 if (numParam('speed') !== undefined) clock.timeScale = numParam('speed')!;
 const urlMode = qs.get('mode') as ModeName | null;
 const urlQuality = qs.get('q') as QualityName | null;
+// Kiosk/device location from the URL (kept on the device, never in the repo).
+if (numParam('lat') !== undefined && numParam('lon') !== undefined) {
+  config.location.lat = numParam('lat')!;
+  config.location.lon = numParam('lon')!;
+  config.location.name = 'set in URL';
+  if (qs.get('tz')) config.location.timeZone = qs.get('tz')!;
+}
 if (numParam('fov') !== undefined) config.fovDeg = numParam('fov')!;
 
 const state: UiState = {

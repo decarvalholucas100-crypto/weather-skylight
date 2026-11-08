@@ -24,13 +24,13 @@ npm run build    # static output in dist/
 | --- | --- |
 | `M` / `→` | next mode |
 | `N` / `←` | previous mode |
-| `1`–`6` | Live, Always Sunny, Clear Night, Cloudy Night, Golden Hour, Storm |
+| `1`–`7` | Live, Always Sunny, Partly Cloudy, Clear Night, Cloudy Night, Golden Hour, Storm |
 | `↑` / `↓` | brightness |
 | `D` | dev panel (time of day, time speed, clouds, rain, wind, lightning, quality) |
 | `I` | debug overlay (FPS, weather values, mode) |
 | `F` / double-click | fullscreen |
 
-URL parameters for testing on any screen: `?geo=0`, `?snap` (apply weather instantly), `?mid=`, `?high=`, `?fov=`, `?mode=storm`, `?q=medium`, `?t=19.5` (local hour), `?cloud=0.6`, `?rain=0.5`, `?wind=12`, `?windto=90`, `?speed=60`, `?dev`, `?debug`, `?ws=ws://host:port`.
+URL parameters: `?lat=&lon=&tz=` (fixed location, e.g. for a kiosk), `?geo=0`, `?snap` (apply weather instantly), `?mid=`, `?high=`, `?fov=`, `?mode=storm`, `?q=medium`, `?t=19.5` (local hour), `?cloud=0.6`, `?rain=0.5`, `?wind=12`, `?windto=90`, `?speed=60`, `?dev`, `?debug`, `?ws=ws://host:port`.
 
 ## Raspberry Pi
 

@@ -164,7 +164,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       for (int k = 0; k < 3; k++) {
         float ph = mix(hgPhase(cosA, 0.8 * c), hgPhase(cosA, -0.25 * c), 0.25);
         direct += a * ph * exp(-od * b);
-        a *= 0.5; b *= 0.6; c *= 0.5;
+        a *= 0.6; b *= 0.5; c *= 0.5;
       }
       // Powder term: darkens thin edges that face away from the light ("dark centers, bright rims" from below).
       float powder = 1.0 - exp(-od * 2.0 - d * 0.5);
@@ -183,8 +183,8 @@ vec4 marchLow(vec3 rd, float jitter) {
         ut += us; us *= 2.2;
       }
       odUp *= sigma;
-      float occl = exp(-odUp * 0.35);
-      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.12, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
+      float occl = exp(-odUp * 0.22);
+      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.22, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
       // A low sun skims under cloud bases; keep its self-shadowing from reading as dark smudges.
       float lowSun = 1.0 - saturate(uLightDir.z * 4.0);
       direct = mix(direct, max(direct, vec3(hgPhase(cosA, 0.3) * 0.25 * occl)), lowSun * 0.6);
@@ -245,20 +245,21 @@ float fbm2(vec2 p, int oct) {
   return s / n;
 }
 // Cellular (Worley) distance to nearest jittered point: altocumulus puffs.
-// Returns (distance relative to that cell's own puff radius, cell random value).
-vec2 cells2(vec2 p) {
+// Altocumulus puff field: each cell holds a rounded puff of random size (some cells empty).
+// Takes the max over neighbouring puffs, so the field is continuous: no seams where cells meet.
+float cellPuffs(vec2 p, float rough) {
   vec2 i = floor(p), f = fract(p);
-  float best = 9.0, id = 0.0;
+  float v = 0.0;
   for (int y = -1; y <= 1; y++)
     for (int x = -1; x <= 1; x++) {
       vec2 o = vec2(float(x), float(y));
       vec3 h = hash32(i + o);
       vec2 c = o + 0.1 + 0.8 * h.xy - f;
-      float rad = mix(0.35, 0.75, h.z);         // puffs vary in size
-      float dd = length(c) / rad;
-      if (dd < best) { best = dd; id = h.z; }
+      float rad = mix(0.35, 0.75, h.z);
+      float dd = length(c) / rad + (rough - 0.5) * 0.6;
+      v = max(v, smoothstep(1.05, 0.15, dd) * smoothstep(0.1, 0.35, h.z));
     }
-  return vec2(best, id);
+  return v;
 }
 
 // ---------- mid layer: altocumulus / altostratus at ~4.6 km ----------
@@ -277,10 +278,9 @@ vec4 midLayer(vec3 rd) {
   // Puffs, slightly stretched across the wind and gently warped into irregular rows.
   vec2 warp = vec2(fbm2(s / 2600.0, 3), fbm2(s / 2600.0 + 9.2, 3)) - 0.5;
   vec2 cq = (s + warp * 700.0) / vec2(230.0, 175.0);
-  vec2 cell = cells2(cq);
   float rough = fbm2(s / 90.0, 3);
   // Rounded puffs with ragged edges; some cells empty so the pattern never reads as a grid.
-  float puff = smoothstep(1.05, 0.15, cell.x + (rough - 0.5) * 0.6) * step(0.22, cell.y) * (0.45 + 0.55 * rough);
+  float puff = cellPuffs(cq, rough) * (0.45 + 0.55 * rough);
   float sheet = fbm2(s / 1400.0, 4);
   float deck = smoothstep(0.6, 1.0, cov);
   float d = patchM * mix(puff, 0.55 + 0.45 * sheet, deck);

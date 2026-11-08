@@ -148,10 +148,10 @@ vec4 moonShade(vec2 s, vec3 tx, vec3 ty) {
   maria = max(maria, smoothstep(0.2, 0.08, length(sw - vec2(-0.2, -0.33))) * 0.8);                     // Nubium
   maria = max(maria, smoothstep(0.16, 0.06, length(sw - vec2(0.5, -0.08))) * 0.85);                    // Fecunditatis
   maria *= 0.75 + 0.5 * vnoise(s * 7.0);
-  float albedo = mix(1.0, 0.76, saturate(maria));
+  float albedo = mix(1.0, 0.85, saturate(maria));
   albedo *= 0.94 + 0.06 * vnoise(s * 18.0) + 0.03 * vnoise(s * 41.0);
   albedo += 0.12 * smoothstep(0.06, 0.0, length(s - vec2(-0.12, -0.72)));                             // Tycho
-  float limb = 0.78 + 0.22 * sqrt(1.0 - r2);
+  float limb = 0.86 + 0.14 * sqrt(1.0 - r2);
   // Coverage follows the lit part, so the dark side melts into the sky (plus faint earthshine).
   // Premultiplied: coverage follows the lit part so the dark side melts into the sky,
   // apart from a faint earthshine.
