@@ -84,7 +84,9 @@ export function weatherToParams(w: Weather): Omit<SkyParams, 'sunDir' | 'moonDir
   const toRad = ((w.windFromDeg + 180) * Math.PI) / 180;
 
   return {
-    cloudLow: Math.max(w.cloudLow, rain > 0 ? 0.85 : 0),
+    // A full overcast reads as a solid gray ceiling from the ground, whichever height band
+    // Open-Meteo assigns it to (an altostratus deck often shows up as 'mid' with low = 0).
+    cloudLow: Math.max(w.cloudLow, rain > 0 ? 0.85 : 0, w.cloudTotal > 0.7 ? Math.min(1, (w.cloudTotal - 0.7) / 0.3) * 0.95 : 0),
     cloudMid: w.cloudMid,
     cloudHigh: w.cloudHigh,
     storminess,

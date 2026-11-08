@@ -71,17 +71,29 @@ float cloudDensity(vec3 p, float hf, bool detail) {
   if (cov < 0.01) return 0.0;
   vec3 q = vec3(p.xy + uWindLow, p.z) ;
   float evolve = uTime * 0.0008; // uTime wraps every 1250 s; keeps noise periodic
-  float base = texture(uNoise, q / 1600.0 + vec3(0.0, 0.0, evolve)).r;
+  // Two scales of billows: big cloud masses plus smaller lumps riding on them.
+  float base = texture(uNoise, q / 1600.0 + vec3(0.0, 0.0, evolve)).r * 0.72
+             + texture(uNoise, q / 640.0 + vec3(0.37, 0.11, evolve * 2.0)).r * 0.28;
+  base = saturate(remap(base, 0.08, 0.92, 0.0, 1.0));
+  // Overcast decks: an undulating base gives the rolling light/dark texture of a stratus ceiling.
+  float deckness = saturate(uCoverLow * 1.5 - 0.6 + uStorm * 0.5);
+  float undulate = texture(uNoise, vec3(q.xy / 4000.0, 0.9 + evolve)).a - 0.5;
+  hf = hf - undulate * 0.35 * deckness;
   float shape = base * heightProfile(hf);
   float d = saturate(remap(shape, 1.0 - cov, 1.0, 0.0, 1.0));
   if (d <= 0.0) return 0.0;
   if (detail) {
+    // Domain-warped detail: swirls the erosion noise so edges turn wispy instead of blobby.
     vec3 dq = q / 320.0 + vec3(0.0, 0.0, evolve * 3.0);
+    vec3 warp = texture(uNoise, q / 900.0 + vec3(0.5, 0.0, evolve)).rga - 0.5;
+    dq += warp * 0.35;
     vec3 dn = texture(uNoise, dq).gba;
     float df = dn.x * 0.625 + dn.y * 0.25 + dn.z * 0.125;
-    // Wispy at the bottom, billowy at the top.
+    float fine = texture(uNoise, dq * 3.0).g;
+    df = df * 0.8 + fine * 0.2;
+    // Wispy at the bottom, billowy (cauliflower) toward the top; erosion bites edges, not cores.
     float erode = mix(df, 1.0 - df, saturate(hf * 4.0));
-    d = saturate(remap(d, erode * 0.32, 1.0, 0.0, 1.0));
+    d = saturate(remap(d, erode * 0.45 * (1.0 - d * 0.5), 1.0, 0.0, 1.0));
   }
   d *= smoothstep(0.0, 0.25, d); // fade out tiny fragments instead of hard specks
   return d * mix(1.8, 2.6, cov) * mix(1.0, 1.4, uStorm);
@@ -181,7 +193,7 @@ vec4 midLayer(vec3 rd) {
   float cov = saturate(uCoverMid + (big - 0.5) * 1.4 * (1.0 - uCoverMid));
   float n = body * 0.55 + cells * 0.35 + fine * 0.1;
   float d = smoothstep(1.0 - cov, 1.0 - cov + 0.35, n) * smoothstep(0.0, 0.1, uCoverMid);
-  float alpha = (1.0 - exp(-d * 2.5)) * 0.9;
+  float alpha = (1.0 - exp(-d * mix(2.5, 7.0, cov))) * mix(0.9, 1.0, cov);
   float cosA = dot(rd, uLightDir);
   vec3 col = uAmbTop * 0.9 + uAmbBottom * 0.4 + uLightMid * (0.12 + hgPhase(cosA, 0.6) * 1.8 * (1.0 - d * 0.6));
   return vec4(col * alpha, 1.0 - alpha);
@@ -200,9 +212,9 @@ vec4 highLayer(vec3 rd) {
           + texture(uNoise, vec3(s / 700.0, 0.12)).g * 0.1;
   float cov = uCoverHigh;
   float d = saturate(remap(n, 1.0 - cov * 0.75, 1.0, 0.0, 1.0));
-  float alpha = (1.0 - exp(-d * 2.2)) * 0.8 * smoothstep(0.0, 0.1, cov);
+  float alpha = (1.0 - exp(-d * 1.6)) * 0.55 * smoothstep(0.0, 0.1, cov);
   float cosA = dot(rd, uSunDir);
-  vec3 col = uAmbTop * 1.1 + uLightHigh * (0.25 + hgPhase(cosA, 0.75) * 2.5);
+  vec3 col = uAmbTop * 1.0 + uLightHigh * (0.16 + hgPhase(cosA, 0.75) * 1.2);
   return vec4(col * alpha, 1.0 - alpha);
 }
 

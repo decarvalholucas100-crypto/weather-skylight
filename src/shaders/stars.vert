@@ -37,7 +37,7 @@ void main() {
   // Brightness from magnitude (each magnitude is 2.512x), with gentle scintillation.
   float flux = pow(2.512, -mag + 1.0);
   float tw = 1.0 + 0.18 * sin(uTime * (7.0 + fract(aEq.x * 911.0) * 9.0) + aEq.y * 400.0);
-  vBright = min(3.0, flux * 1.6 + 0.25) * vis * tw;
-  gl_PointSize = uPxScale * (3.0 + 2.2 * clamp(1.5 - mag * 0.5, 0.0, 2.2));
+  vBright = min(4.0, flux * 2.4 + 0.45) * vis * tw;
+  gl_PointSize = uPxScale * (5.0 + 5.0 * clamp(1.6 - mag * 0.55, 0.0, 2.4));
   vColor = bvToRgb(aMagCol.y);
 }
