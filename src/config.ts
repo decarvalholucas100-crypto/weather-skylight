@@ -51,7 +51,7 @@ export const config = {
   lightPollution: 0.8,
 
   quality: {
-    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 6, skySamples: 16, outputMaxWidth: 2560 },
+    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560 },
     medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280 },
     low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960 },
   } satisfies Record<QualityName, QualityPreset>,

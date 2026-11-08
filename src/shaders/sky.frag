@@ -144,8 +144,25 @@ vec4 marchLow(vec3 rd, float jitter) {
       // Powder term: darkens thin edges that face away from the light ("dark centers, bright rims" from below).
       float powder = 1.0 - exp(-od * 2.0 - d * 0.5);
       direct *= mix(1.0, powder * 2.0, 0.35);
-      // Ambient: sky light from above is blocked by the cloud mass overhead (od is a proxy).
-      vec3 amb = mix(uAmbBottom, uAmbTop * mix(0.18, 1.0, exp(-od * 0.12)), pow(saturate(hf), 0.7));
+      // Ambient occlusion from the cloud mass directly overhead: the base of a thick cloud is
+      // dark, thin edges and wisps stay bright. This is what makes clouds read correctly from
+      // below whatever the sun angle (a low sun alone would only shade their sides).
+      float odUp = 0.0;
+      float us = thick * 0.08;
+      float ut = us * (0.5 + jitter);
+      for (int k = 0; k < 3; k++) {
+        vec3 up = p + vec3(0.0, 0.0, ut);
+        float uhf = (up.z - base) / thick;
+        if (uhf > 1.0) break;
+        odUp += cloudDensity(up, uhf, false) * us;
+        ut += us; us *= 2.2;
+      }
+      odUp *= sigma;
+      float occl = exp(-odUp * 0.35);
+      vec3 amb = uAmbTop * mix(0.12, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
+      // A low sun skims under cloud bases; keep its self-shadowing from reading as dark smudges.
+      float lowSun = 1.0 - saturate(uLightDir.z * 4.0);
+      direct = mix(direct, max(direct, vec3(hgPhase(cosA, 0.3) * 0.25 * occl)), lowSun * 0.6);
       vec3 S = uLightLow * direct * 0.9 + amb;
       float ext = d * sigma;
       float Ts = exp(-ext * dt);
@@ -234,20 +251,20 @@ vec4 midLayer(vec3 rd) {
   float patchM = smoothstep(th, th + 0.18, patchN);
   // Puffs, slightly stretched across the wind and gently warped into irregular rows.
   vec2 warp = vec2(fbm2(s / 2600.0, 3), fbm2(s / 2600.0 + 9.2, 3)) - 0.5;
-  vec2 cq = (s + warp * 900.0) / vec2(330.0, 250.0);
+  vec2 cq = (s + warp * 700.0) / vec2(230.0, 175.0);
   vec2 cell = cells2(cq);
-  float rough = fbm2(s / 140.0, 3);
+  float rough = fbm2(s / 90.0, 3);
   // Rounded puffs with ragged edges; some cells empty so the pattern never reads as a grid.
-  float puff = smoothstep(1.0, 0.35, cell.x + (rough - 0.5) * 0.5) * step(0.18, cell.y) * (0.55 + 0.45 * rough);
+  float puff = smoothstep(1.05, 0.15, cell.x + (rough - 0.5) * 0.6) * step(0.22, cell.y) * (0.45 + 0.55 * rough);
   float sheet = fbm2(s / 1400.0, 4);
   float deck = smoothstep(0.6, 1.0, cov);
   float d = patchM * mix(puff, 0.55 + 0.45 * sheet, deck);
-  float alpha = (1.0 - exp(-d * mix(1.6, 5.0, deck))) * mix(0.8, 1.0, deck) * smoothstep(0.0, 0.08, cov);
+  float alpha = (1.0 - exp(-d * mix(1.3, 5.0, deck))) * mix(0.55, 1.0, deck) * smoothstep(0.0, 0.08, cov);
   float cosA = dot(rd, uLightDir);
   // Seen from below, a puff's thick middle is shaded gray and its thin rim catches the light.
   float thick = saturate(d * 1.6);
-  vec3 col = (uAmbTop * 0.8 + uAmbBottom * 0.4) * mix(1.0, 0.62, thick)
-           + uLightMid * (0.06 + hgPhase(cosA, 0.65) * (0.3 + 1.4 * (1.0 - thick)) * (1.0 - deck * 0.5));
+  vec3 col = (uAmbTop * 0.75 + uAmbBottom * 0.4) * mix(1.0, 0.55, thick)
+           + uLightMid * (0.04 + hgPhase(cosA, 0.65) * (0.15 + 1.1 * (1.0 - thick)) * (1.0 - deck * 0.5));
   return vec4(col * alpha, 1.0 - alpha);
 }
 
@@ -266,25 +283,32 @@ vec4 highLayer(vec3 rd) {
   float patchN = fbm2(s / vec2(30000.0, 14000.0) + 1.3, 4);
   float th = 0.6 - cov * 0.55;
   float patchM = smoothstep(th, th + 0.22, patchN);
-  if (patchM < 0.003) return vec4(0.0, 0.0, 0.0, 1.0);
+  // Cirrostratus veil: a faint milky sheet that appears as high cover increases. Computed
+  // independently of the streak patches so it never has a hard edge.
+  float veil = smoothstep(0.45, 1.0, cov) * (0.35 + 0.3 * fbm2(s / 12000.0, 3));
+  if (patchM < 0.003 && veil < 0.003) return vec4(0.0, 0.0, 0.0, 1.0);
 
   // Curving flow: displace coordinates with low-frequency noise so wisps bend and fan out.
   vec2 w1 = vec2(fbm2(s / 9000.0 + 4.1, 3), fbm2(s / 9000.0 + 11.7, 3)) - 0.5;
-  vec2 q = s + vec2(w1.x * 2000.0, w1.y * 4000.0);
+  vec2 q = s + vec2(w1.x * 2500.0, w1.y * 1300.0);
   // Wisps: soft, strongly wind-stretched clouds (the body of each cirrus streak).
-  float wisp = fbm2(q / vec2(7500.0, 1400.0) + 2.2, 5);
-  float body = smoothstep(0.5, 0.78, wisp);
+  float wisp = fbm2(q / vec2(6000.0, 1900.0) + 2.2, 5);
+  float wisp2 = fbm2(q / vec2(2500.0, 700.0) + 6.1, 3);
+  float body = smoothstep(0.52, 0.8, wisp * 0.75 + wisp2 * 0.25);
   // Fibers: fine striations along the wind, broken up so they never form continuous lines.
   float stri = fbm2(q / vec2(2600.0, 95.0), 2);
   float brk = fbm2(q / vec2(1800.0, 700.0) + 8.8, 2);
-  float fibers = mix(0.45, 1.0, smoothstep(0.35, 0.75, stri)) * mix(0.6, 1.0, brk);
+  // Fine hair-like fibrils (thin across the wind) layered on broader streaks.
+  float fibril = fbm2(q / vec2(1400.0, 38.0) + 3.3, 2);
+  float fibers = mix(0.45, 1.0, smoothstep(0.38, 0.72, stri)) * mix(0.7, 1.0, smoothstep(0.35, 0.7, fibril)) * mix(0.5, 1.0, brk);
   // Tufts: denser heads where streaks hook (cirrus uncinus).
   float tuft = smoothstep(0.62, 0.85, fbm2(q / vec2(2200.0, 1000.0) + 5.5, 3));
-  float d = patchM * body * fibers * (1.0 + tuft * 0.8);
-  float alpha = (1.0 - exp(-d * 1.4)) * 0.72 * smoothstep(0.0, 0.08, cov);
+  float d = patchM * body * fibers * (1.0 + tuft * 0.8) + veil * 0.35;
+  // Cirrus is thin ice: mostly translucent, the sky shows through.
+  float alpha = (1.0 - exp(-d * 1.1)) * 0.5 * smoothstep(0.0, 0.08, cov);
   float cosA = dot(rd, uSunDir);
   // Ice crystals forward-scatter strongly: cirrus near the sun glows.
-  vec3 col = uAmbTop * 1.05 + uLightHigh * (0.14 + hgPhase(cosA, 0.8) * 1.1 + hgPhase(cosA, 0.3) * 0.4);
+  vec3 col = uAmbTop * 1.15 + uLightHigh * (0.09 + hgPhase(cosA, 0.8) * 0.9 + hgPhase(cosA, 0.3) * 0.25);
   return vec4(col * alpha, 1.0 - alpha);
 }
 

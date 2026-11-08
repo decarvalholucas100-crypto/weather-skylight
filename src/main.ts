@@ -21,6 +21,8 @@ const dev: DevOverrides = {
   windSpeed: numParam('wind'),
   windToDeg: numParam('windto'),
   lightning: qs.has('lightning') ? qs.get('lightning') !== '0' : undefined,
+  mid: numParam('mid'),
+  high: numParam('high'),
 };
 if (numParam('t') !== undefined) clock.setTimeOfDay(numParam('t')!);
 if (numParam('speed') !== undefined) clock.timeScale = numParam('speed')!;

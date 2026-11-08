@@ -26,6 +26,9 @@ export interface DevOverrides {
   windSpeed?: number;
   windToDeg?: number;
   lightning?: boolean;
+  /** URL-only test overrides for the mid and high layers. */
+  mid?: number;
+  high?: number;
 }
 
 interface ModeSpec {
@@ -52,7 +55,7 @@ export const MODES: Record<ModeName, ModeSpec> = {
   },
   golden: {
     label: 'Golden Hour', sun: { alt: 3.5, az: 250 }, moon: 'real',
-    weather: { cloudLow: 0.38, cloudMid: 0.25, cloudHigh: 0.35, storminess: 0, rain: 0, haze: 0.15, lightning: 0, windX: 5, windY: 2 },
+    weather: { cloudLow: 0.38, cloudMid: 0.08, cloudHigh: 0.5, storminess: 0, rain: 0, haze: 0.15, lightning: 0, windX: 5, windY: 2 },
   },
   storm: {
     label: 'Storm', sun: 'real', moon: 'real',
@@ -125,8 +128,8 @@ export function buildTarget(
 
   if (dev.cloud !== undefined) {
     p.cloudLow = dev.cloud;
-    p.cloudMid = Math.min(1, dev.cloud * 0.6);
-    p.cloudHigh = Math.min(1, 0.15 + dev.cloud * 0.4);
+    p.cloudMid = Math.min(1, Math.max(0, dev.cloud - 0.35) * 0.7);
+    p.cloudHigh = Math.min(1, 0.12 + dev.cloud * 0.3);
     if (dev.rain === undefined) p.storminess = dev.cloud > 0.9 ? 0.3 : 0;
   }
   if (dev.rain !== undefined) {
@@ -146,6 +149,8 @@ export function buildTarget(
     p.windY = Math.cos(d) * s;
   }
   if (dev.lightning !== undefined) p.lightning = dev.lightning ? 1 : 0;
+  if (dev.mid !== undefined) p.cloudMid = dev.mid;
+  if (dev.high !== undefined) p.cloudHigh = dev.high;
   return p;
 }
 
