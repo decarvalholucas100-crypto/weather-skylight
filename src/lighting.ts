@@ -33,6 +33,7 @@ export interface Lighting {
   starLimitMag: number;
   starVis: number;
   night: number;
+  underDeck: number;
 }
 
 export function computeLighting(p: SkyParams): Lighting {
@@ -53,11 +54,18 @@ export function computeLighting(p: SkyParams): Lighting {
   // Overcast skies are much darker beneath: thick decks absorb most light.
   const deck = Math.max(0, p.cloudLow - 0.6) / 0.4;
   const dim = 1 - 0.45 * deck * (0.4 + 0.6 * p.storminess);
+  // A mid-level deck (altostratus) sits above the low clouds and blocks the direct sun from
+  // reaching them: low clouds under it turn gray instead of sunlit white.
+  const underDeckG = 1 - 0.85 * Math.min(1, Math.max(0, (p.cloudMid - 0.4) / 0.5));
+  const midDeck = Math.max(0, (p.cloudMid - 0.55) / 0.45);
+  const md = Math.min(1, Math.max(0, (p.cloudMid - 0.4) / 0.5));
+  const underDeck = 1 - 0.9 * md * md * (3 - 2 * md) - 0.25 * Math.max(0, p.cloudHigh - 0.6);
+  void midDeck;
 
   // Direct sunlight on clouds adapts less than the sky does, so low-sun clouds stay orange
   // instead of blowing out to yellow-white.
   const sunExp = Math.min(exposure, 2.4);
-  const sunLow = scale(sunlightAt(1500, p.sunDir, mieScale), sunExp * dim);
+  const sunLow = scale(sunlightAt(p.lowBase + 400, p.sunDir, mieScale), sunExp * dim * underDeck);
   const sunMid = scale(sunlightAt(4600, p.sunDir, mieScale), sunExp);
   const sunHigh = scale(sunlightAt(9000, p.sunDir, mieScale), Math.min(exposure, 6));
 
@@ -75,7 +83,7 @@ export function computeLighting(p: SkyParams): Lighting {
   const zenGray = mix(zen, [zl, zl, zl * 1.05], Math.min(1, deck * 0.9 + p.rain * 0.5));
   const ambTopDay = scale(zenGray, exposure * 1.7 * dim);
   const ambTop = add(ambTopDay, scale([0.05, 0.07, 0.12], night * (0.25 + moonLightAmt)), scale(cityGlow, 0.03));
-  const groundBounce = scale(sunlightAt(20, p.sunDir, mieScale), exposure * Math.max(0, p.sunDir[2]) * 0.012 * dim);
+  const groundBounce = scale(sunlightAt(20, p.sunDir, mieScale), exposure * Math.max(0, p.sunDir[2]) * 0.012 * dim * (0.3 + 0.7 * underDeckG));
   // Overcast light is neutral-to-cool; strip the warm ground-bounce tint under a deck.
   const gb = luminance(groundBounce);
   const ambBottom = add(mix(groundBounce, [gb * 0.95, gb, gb * 1.08], deck), scale(ambTopDay, 0.18), scale(cityGlow, 0.17 * (0.6 + 0.4 * p.cloudLow)));
@@ -107,6 +115,6 @@ export function computeLighting(p: SkyParams): Lighting {
     exposure, mieScale, lightDir,
     lightLow: add(sunLow, moonLight), lightMid: add(sunMid, moonLight), lightHigh: add(sunHigh, scale(moonLight, 1.2)),
     ambTop, ambBottom, sunDisk, nightSky, moonGlow, moonColor, moonGlowAmt, fogColor, glassTint,
-    starLimitMag, starVis, night,
+    starLimitMag, starVis, night, underDeck,
   };
 }

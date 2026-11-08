@@ -18,6 +18,9 @@ export interface SkyParams {
   windY: number; // north +
   haze: number; // 0..1 from visibility / fog
   lightning: number; // 0..1 how often lightning flickers
+  lowBase: number; // meters, base of the low cloud layer (from METAR when available)
+  convective: number; // 0 = flat stratiform layer, 1 = puffy cumulus (from CAPE / lifted index)
+  towers: number; // 0..1 towering cumulus / cumulonimbus (METAR TCU / CB)
 }
 
 export interface DevOverrides {
@@ -26,6 +29,8 @@ export interface DevOverrides {
   windSpeed?: number;
   windToDeg?: number;
   lightning?: boolean;
+  convective?: number;
+  lowBase?: number;
   /** URL-only test overrides for the mid and high layers. */
   mid?: number;
   high?: number;
@@ -59,7 +64,7 @@ export const MODES: Record<ModeName, ModeSpec> = {
   },
   storm: {
     label: 'Storm', sun: 'real', moon: 'real',
-    weather: { cloudLow: 1, cloudMid: 0.9, cloudHigh: 0.5, storminess: 1, rain: 0.9, haze: 0.25, lightning: 1, windX: 11, windY: 6 },
+    weather: { cloudLow: 1, cloudMid: 0.9, cloudHigh: 0.5, storminess: 1, rain: 0.9, haze: 0.25, lightning: 1, windX: 11, windY: 6, lowBase: 750, convective: 0.8, towers: 0.9 },
   },
 };
 
@@ -90,23 +95,80 @@ export function weatherToParams(w: Weather): Omit<SkyParams, 'sunDir' | 'moonDir
   const speed = w.windSpeed * config.weather.cloudWindMultiplier;
   const toRad = ((w.windFromDeg + 180) * Math.PI) / 180;
 
+  // ---- Cloud layers: METAR (what the airport observer/ceilometer actually sees) when we
+  // have it, Open-Meteo's model layers otherwise. METAR gives coverage and base height per
+  // layer; Open-Meteo's CAPE / lifted index tell us whether low cloud is puffy cumulus
+  // (unstable air) or a flat stratus deck (stable air).
+  const COVER = { FEW: 0.2, SCT: 0.45, BKN: 0.75, OVC: 1, VV: 1 } as const;
+  const band = { low: 0, mid: 0, high: 0 };
+  let lowBaseFt = 0, tcu = false, cb = false;
+  const m = w.metar ?? null; // older cached readings predate these fields
+  const cape = w.cape ?? 0, li = w.liftedIndex ?? 5;
+  if (m) {
+    for (const l of m.layers) {
+      const f = COVER[l.cover];
+      const key = l.baseFt < 6500 ? 'low' : l.baseFt < 20000 ? 'mid' : 'high';
+      band[key] = 1 - (1 - band[key]) * (1 - f); // combine layers in the same band
+      if (key === 'low' && (!lowBaseFt || l.baseFt < lowBaseFt)) lowBaseFt = l.baseFt;
+      if (l.type === 'TCU') tcu = true;
+      if (l.type === 'CB') cb = true;
+    }
+  }
+  const overcastRule = w.cloudTotal > 0.7 ? Math.min(1, (w.cloudTotal - 0.7) / 0.3) * 0.95 : 0;
+  let cloudLow: number, cloudMid: number;
+  if (m) {
+    cloudLow = band.low;
+    // Automated stations only see to ~12,000 ft, so keep the model's mid layer as a floor.
+    cloudMid = Math.max(band.mid, w.cloudMid * 0.6);
+  } else {
+    // Without METAR, a full overcast reads as a solid ceiling whichever band the model put it in.
+    cloudLow = Math.max(w.cloudLow, overcastRule);
+    cloudMid = w.cloudMid;
+  }
+  if (rain > 0) cloudLow = Math.max(cloudLow, 0.85);
+  const cloudHigh = Math.max(band.high, w.cloudHigh);
+
+  // Instability -> cloud type. CAPE > ~500 J/kg or a negative lifted index: convective.
+  let convective = Math.min(1, cape / 600);
+  if (li < 0) convective = Math.max(convective, Math.min(1, 0.5 - li * 0.1));
+  if (tcu || cb) convective = Math.max(convective, 0.85);
+  if (!tcu && !cb && cloudLow > 0.8 && cape < 100) convective = Math.min(convective, 0.15); // stratus deck
+  convective = Math.max(convective, 0.25 * (1 - cloudLow)); // scattered low cloud is never perfectly flat
+
+  const towers = cb ? 1 : tcu ? 0.55 : isThunder ? 0.8 : 0;
+  if (cb) storminess = Math.max(storminess, 0.85);
+  else if (tcu) storminess = Math.max(storminess, 0.25);
+
+  // Cloud base: METAR's lowest low layer, else a typical value for the cloud type.
+  const lowBase = lowBaseFt ? Math.min(2400, Math.max(250, lowBaseFt * 0.3048)) : convective > 0.5 ? 1300 : 900;
+
   return {
-    // A full overcast reads as a solid gray ceiling from the ground, whichever height band
-    // Open-Meteo assigns it to (an altostratus deck often shows up as 'mid' with low = 0).
-    cloudLow: Math.max(w.cloudLow, rain > 0 ? 0.85 : 0, w.cloudTotal > 0.7 ? Math.min(1, (w.cloudTotal - 0.7) / 0.3) * 0.95 : 0),
-    cloudMid: w.cloudMid,
-    cloudHigh: w.cloudHigh,
+    cloudLow,
+    cloudMid,
+    cloudHigh,
     storminess,
     rain,
     windX: Math.sin(toRad) * speed,
     windY: Math.cos(toRad) * speed,
     haze,
-    lightning: isThunder ? (code >= 96 ? 1 : 0.6) : 0,
+    lightning: isThunder || cb ? (code >= 96 ? 1 : 0.6) : 0,
+    lowBase,
+    convective,
+    towers,
   };
+}
+
+/** One-line human summary of the current cloud picture (debug overlay). */
+export function describeClouds(p: SkyParams): string {
+  const kind = p.cloudLow < 0.05 ? 'no low cloud'
+    : p.towers > 0.7 ? 'cumulonimbus' : p.towers > 0.3 ? 'towering cumulus'
+    : p.convective > 0.55 ? 'cumulus' : p.convective > 0.3 ? 'stratocumulus' : 'stratus';
+  return `${kind}, base ${Math.round(p.lowBase)} m (${Math.round(p.lowBase / 0.3048 / 100) * 100} ft), convective ${Math.round(p.convective * 100)}%`;
 }
 
 const DEFAULT_WEATHER: Omit<SkyParams, 'sunDir' | 'moonDir' | 'moonFraction'> = {
   cloudLow: 0.3, cloudMid: 0.1, cloudHigh: 0.2, storminess: 0, rain: 0, windX: 5, windY: 2, haze: 0.1, lightning: 0,
+  lowBase: 1350, convective: 0.7, towers: 0,
 };
 
 export function buildTarget(
@@ -149,6 +211,8 @@ export function buildTarget(
     p.windY = Math.cos(d) * s;
   }
   if (dev.lightning !== undefined) p.lightning = dev.lightning ? 1 : 0;
+  if (dev.convective !== undefined) p.convective = dev.convective;
+  if (dev.lowBase !== undefined) p.lowBase = dev.lowBase;
   if (dev.mid !== undefined) p.cloudMid = dev.mid;
   if (dev.high !== undefined) p.cloudHigh = dev.high;
   return p;
@@ -164,7 +228,7 @@ function easeVec(cur: Vec3, tgt: Vec3, k: number): Vec3 {
   return [v[0] / l, v[1] / l, v[2] / l];
 }
 
-const WEATHER_KEYS = ['cloudLow', 'cloudMid', 'cloudHigh', 'storminess', 'rain', 'windX', 'windY', 'haze', 'lightning'] as const;
+const WEATHER_KEYS = ['cloudLow', 'cloudMid', 'cloudHigh', 'storminess', 'rain', 'windX', 'windY', 'haze', 'lightning', 'lowBase', 'convective', 'towers'] as const;
 
 /**
  * Exponential easing. astroTau governs sun/moon (short, so time scrubbing stays responsive);

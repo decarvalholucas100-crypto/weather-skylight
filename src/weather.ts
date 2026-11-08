@@ -2,6 +2,9 @@
 // so a reboot without network still shows the last sky), retries quietly on failure.
 import { config } from './config';
 
+export interface MetarLayer { cover: 'FEW' | 'SCT' | 'BKN' | 'OVC' | 'VV'; baseFt: number; type: 'CB' | 'TCU' | null }
+export interface Metar { station: string; obsTime: number; raw: string; clear: boolean; layers: MetarLayer[]; wx: string | null }
+
 export interface Weather {
   cloudTotal: number; // 0..1
   cloudLow: number;
@@ -12,6 +15,9 @@ export interface Weather {
   windSpeed: number; // m/s at 10 m
   windFromDeg: number; // meteorological: direction the wind blows FROM
   visibility: number; // meters
+  cape: number; // J/kg, convective available potential energy (instability)
+  liftedIndex: number; // negative = unstable
+  metar: Metar | null; // nearest airport observation, if available
   fetchedAt: number; // epoch ms
 }
 
@@ -36,7 +42,7 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
   const { lat, lon } = config.location;
   const vars = [
     'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high',
-    'precipitation', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'visibility',
+    'precipitation', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'visibility', 'cape', 'lifted_index',
   ].join(',');
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=${vars}&wind_speed_unit=ms&timezone=auto`;
   const res = await fetch(url, { signal, cache: 'no-store' });
@@ -56,9 +62,30 @@ export async function fetchWeather(signal?: AbortSignal): Promise<Weather> {
     windSpeed: num(c.wind_speed_10m, 3),
     windFromDeg: num(c.wind_direction_10m, 270),
     visibility: num(c.visibility, 24000),
+    cape: num(c.cape, 0),
+    liftedIndex: num(c.lifted_index, 5),
+    metar: null,
     fetchedAt: Date.now(),
   };
   return w;
+}
+
+/**
+ * Latest METAR via our own /api/metar relay (a Vercel function). Optional: if it's unavailable
+ * (local dev, offline, upstream down) the app runs on Open-Meteo alone. Reports older than
+ * 3 hours are ignored.
+ */
+export async function fetchMetar(signal?: AbortSignal): Promise<Metar | null> {
+  try {
+    const res = await fetch(config.metarUrl, { signal, cache: 'no-store' });
+    if (!res.ok) return null;
+    const m = (await res.json()) as Metar & { error?: string };
+    if (m.error || !Array.isArray(m.layers)) return null;
+    if (Date.now() - m.obsTime > 3 * 3600_000) return null;
+    return m;
+  } catch {
+    return null;
+  }
 }
 
 /** Starts polling. Calls onUpdate with each successful reading. Never throws. */
@@ -70,7 +97,8 @@ export function startWeatherPolling(onUpdate: (w: Weather) => void, onStatus?: (
     const ctrl = new AbortController();
     const to = window.setTimeout(() => ctrl.abort(), 15000);
     try {
-      const w = await fetchWeather(ctrl.signal);
+      const [w, metar] = await Promise.all([fetchWeather(ctrl.signal), fetchMetar(ctrl.signal)]);
+      w.metar = metar;
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(w)); } catch { /* storage may be unavailable */ }
       onStatus?.('ok');
       onUpdate(w);

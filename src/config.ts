@@ -70,5 +70,8 @@ export const config = {
    * connects here and sends the same commands the keyboard does (e.g. "mode.next").
    * Enable with ?ws=1 or ?ws=ws://host:port in the URL, or set enabled true.
    */
+  /** METAR relay (Vercel function in api/metar.js). Absolute URL lets a Pi use the deployed one. */
+  metarUrl: '/api/metar',
+
   controlSocket: { enabled: false, url: 'ws://localhost:8787' },
 };

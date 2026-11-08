@@ -5,7 +5,7 @@ import { attachControlSocket, attachKeyboard, CommandBus } from './input';
 import { computeLighting } from './lighting';
 import { Renderer } from './render/renderer';
 import { planetRows } from './planets';
-import { buildTarget, cloneParams, computeAstro, easeParams, MODES, type DevOverrides, type SkyParams } from './state';
+import { buildTarget, cloneParams, computeAstro, describeClouds, easeParams, MODES, type DevOverrides, type SkyParams } from './state';
 import { Ui, type UiState } from './ui';
 import { loadCachedWeather, startWeatherPolling, type Weather } from './weather';
 
@@ -110,7 +110,7 @@ startWeatherPolling(
   (w) => {
     const first = !weather;
     weather = w;
-    weatherTau = first ? 20 : config.weather.easeSeconds;
+    weatherTau = first ? (qs.has("snap") ? 0.05 : 3) : config.weather.easeSeconds;
   },
   (s) => { weatherStatus = s; },
 );
@@ -203,6 +203,7 @@ function frame(): void {
     glassTint: L.glassTint,
     exposure: L.exposure, mieScale: L.mieScale,
     coverLow: current.cloudLow, coverMid: current.cloudMid, coverHigh: current.cloudHigh,
+    lowBase: current.lowBase, convective: current.convective, towers: current.towers, underDeck: L.underDeck,
     storm: current.storminess, rain: current.rain, wet, haze: current.haze,
     cloudTime, realTime: (now / 1000) % 3600,
     windLow, windMid, windHigh, windDir: [wx / ws, wy / ws],
@@ -237,6 +238,9 @@ function frame(): void {
       `rain       ${pct(current.rain)}  glass wet ${pct(wet)}  haze ${pct(current.haze)}`,
       `wind       ${Math.hypot(wx, wy).toFixed(1)} m/s toward ${Math.round((Math.atan2(wx, wy) * 180) / Math.PI + 360) % 360}°`,
       `weather    ${weatherStatus}${w ? `  @ ${new Date(w.fetchedAt).toLocaleTimeString()}  code ${w.weatherCode}  cloud ${pct(w.cloudTotal)}  precip ${w.precipitation}mm  wind ${w.windSpeed}m/s from ${w.windFromDeg}°  vis ${(w.visibility / 1000).toFixed(1)}km` : ''}`,
+      `cape       ${w ? `${Math.round(w.cape ?? 0)} J/kg  lifted index ${(w.liftedIndex ?? 0).toFixed(1)}` : '-'}`,
+      `metar      ${w?.metar ? `${w.metar.raw}` : 'unavailable (using Open-Meteo layers)'}`,
+      `cloud type ${describeClouds(current)}`,
     ].join('\n'));
   }
   ui.tickTimeSlider();

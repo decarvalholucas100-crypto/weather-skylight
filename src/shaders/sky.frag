@@ -25,6 +25,10 @@ uniform vec3 uFogColor;
 
 uniform float uCoverLow, uCoverMid, uCoverHigh;
 uniform float uStorm;
+uniform float uLowBase;      // m, low cloud base (METAR)
+uniform float uConvective;   // 0 stratus .. 1 cumulus
+uniform float uTowers;       // towering cumulus / cumulonimbus amount
+uniform float uUnderDeck;    // 1 = open sky above the low layer, ~0.1 = under a thick mid deck
 uniform float uRain;
 uniform float uHaze;
 uniform float uTime;
@@ -48,8 +52,11 @@ vec3 skyRadiance(vec3 d) {
 }
 
 // ---------- low cloud layer ----------
-float layerBase() { return mix(1350.0, 700.0, uStorm); }
-float layerThick() { return mix(1300.0, 3000.0, uStorm) * mix(1.0, 0.75, uCoverLow * (1.0 - uStorm)); }
+float layerBase() { return mix(uLowBase, min(uLowBase, 800.0), uStorm); }
+// Thickness of ordinary cloud (stratus thin, cumulus deep, storms deeper)...
+float baseThick() { return mix(mix(650.0, 1900.0, uConvective), 3000.0, uStorm); }
+// ...plus headroom for towers (TCU / CB) that rise far above the rest.
+float layerThick() { return baseThick() + uTowers * 3200.0; }
 
 float coverageAt(vec2 xz) {
   vec2 w = xz + uWindLow;
@@ -59,11 +66,16 @@ float coverageAt(vec2 xz) {
   return cov * smoothstep(0.0, 0.12, c);
 }
 
-float heightProfile(float hf) {
-  // Flat-ish bases, rounded tops; storms are taller and more uniform.
-  float cumulus = smoothstep(0.0, 0.07, hf) * smoothstep(1.0, 0.55, hf);
-  float stratus = smoothstep(0.0, 0.15, hf) * smoothstep(1.0, 0.75, hf);
-  return mix(cumulus, stratus, saturate(uCoverLow * 1.2 - 0.3 + uStorm * 0.5));
+// hf: 0..1 through the full layer (including tower headroom). towerMask: where towers rise.
+float heightProfile(float hf, float towerMask) {
+  float frac = baseThick() / layerThick();        // ordinary cloud occupies the bottom 'frac'
+  float hb = hf / frac;                            // height in ordinary-cloud units
+  float tall = mix(frac, 1.0, towerMask);          // towers reach the top of the layer
+  // Cumulus: flat base, rounded top. Stratus: thin uniform sheet.
+  float cumulus = smoothstep(0.0, 0.07, hb) * smoothstep(tall, tall * 0.5, hf);
+  float stratus = smoothstep(0.0, 0.15, hb) * smoothstep(frac, frac * 0.7, hf);
+  float flat_ = max(saturate(1.25 - uConvective * 1.7), saturate(uCoverLow * 1.2 - 0.3 + uStorm * 0.5) * (1.0 - uConvective * 0.6));
+  return mix(cumulus, stratus, saturate(flat_ - towerMask));
 }
 
 float cloudDensity(vec3 p, float hf, bool detail) {
@@ -79,7 +91,11 @@ float cloudDensity(vec3 p, float hf, bool detail) {
   float deckness = saturate(uCoverLow * 1.5 - 0.6 + uStorm * 0.5);
   float undulate = texture(uNoise, vec3(q.xy / 4000.0, 0.9 + evolve)).a - 0.5;
   hf = hf - undulate * 0.35 * deckness;
-  float shape = base * heightProfile(hf);
+  // Stratus decks get lumpy, rolling texture on their underside (stratocumulus-like rolls).
+  float rolls = texture(uNoise, vec3(q.xy / vec2(1500.0, 2600.0), 0.62 + evolve)).a;
+  base = mix(base, base * (0.6 + 0.8 * rolls), deckness * 0.7);
+  float towerMask = uTowers > 0.01 ? smoothstep(0.5, 0.78, texture(uNoise, vec3(q.xy / 7000.0, 0.37)).a) * uTowers : 0.0;
+  float shape = base * heightProfile(hf, towerMask);
   float d = saturate(remap(shape, 1.0 - cov, 1.0, 0.0, 1.0));
   if (d <= 0.0) return 0.0;
   if (detail) {
@@ -159,7 +175,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       }
       odUp *= sigma;
       float occl = exp(-odUp * 0.35);
-      vec3 amb = uAmbTop * mix(0.12, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
+      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.12, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
       // A low sun skims under cloud bases; keep its self-shadowing from reading as dark smudges.
       float lowSun = 1.0 - saturate(uLightDir.z * 4.0);
       direct = mix(direct, max(direct, vec3(hgPhase(cosA, 0.3) * 0.25 * occl)), lowSun * 0.6);

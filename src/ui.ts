@@ -164,6 +164,8 @@ export class Ui {
     const wx = this.section('Weather overrides');
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     this.slider(wx, { label: 'Cloud cover', min: 0, max: 1, step: 0.01, value: 0.4, fmt: pct, overridable: true }, (v) => { dev.cloud = v; });
+    this.slider(wx, { label: 'Cloud type (flat → puffy)', min: 0, max: 1, step: 0.01, value: 0.7, fmt: (v) => (v < 0.3 ? 'stratus' : v < 0.55 ? 'stratocumulus' : 'cumulus'), overridable: true }, (v) => { dev.convective = v; });
+    this.slider(wx, { label: 'Cloud base', min: 300, max: 2400, step: 50, value: 1300, fmt: (v) => `${Math.round(v)} m · ${Math.round(v / 0.3048 / 100) * 100} ft`, overridable: true }, (v) => { dev.lowBase = v; });
     this.slider(wx, { label: 'Rain', min: 0, max: 1, step: 0.01, value: 0.5, fmt: pct, overridable: true }, (v) => { dev.rain = v; });
     this.slider(wx, { label: 'Wind (cloud level)', min: 0, max: 40, step: 0.5, value: 8, fmt: (v) => `${v.toFixed(1)} m/s`, overridable: true }, (v) => { dev.windSpeed = v; });
     const compass = (v: number) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(v / 45) % 8] + ` ${Math.round(v)}°`;

@@ -35,6 +35,10 @@ export interface FrameUniforms {
   exposure: number;
   mieScale: number;
   coverLow: number;
+  lowBase: number;
+  convective: number;
+  towers: number;
+  underDeck: number;
   coverMid: number;
   coverHigh: number;
   storm: number;
@@ -311,6 +315,10 @@ export class Renderer {
     ];
     for (const [k, v] of v3) gl.uniform3fv(u[k], v);
     gl.uniform1f(u.uCoverLow, f.coverLow);
+    gl.uniform1f(u.uLowBase, f.lowBase);
+    gl.uniform1f(u.uConvective, f.convective);
+    gl.uniform1f(u.uTowers, f.towers);
+    gl.uniform1f(u.uUnderDeck, f.underDeck);
     gl.uniform1f(u.uCoverMid, f.coverMid);
     gl.uniform1f(u.uCoverHigh, f.coverHigh);
     gl.uniform1f(u.uStorm, f.storm);
