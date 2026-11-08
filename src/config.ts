@@ -16,6 +16,8 @@ export interface QualityPreset {
   skySamples: number;
   /** Cap on the final output width (the full-res pass that draws rain, moon, stars). */
   outputMaxWidth: number;
+  /** Number of cirrus strands (instanced ribbons). */
+  cirrusStrands: number;
 }
 
 export const config = {
@@ -54,9 +56,9 @@ export const config = {
   lightPollution: 0.8,
 
   quality: {
-    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560 },
-    medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280 },
-    low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960 },
+    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 72, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560, cirrusStrands: 6000 },
+    medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280, cirrusStrands: 2400 },
+    low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960, cirrusStrands: 900 },
   } satisfies Record<QualityName, QualityPreset>,
 
   defaultQuality: 'high' as QualityName,

@@ -15,6 +15,8 @@ import skyFrag from '../shaders/sky.frag?raw';
 import compositeFrag from '../shaders/composite.frag?raw';
 import starsVert from '../shaders/stars.vert?raw';
 import starsFrag from '../shaders/stars.frag?raw';
+import cirrusVert from '../shaders/cirrus.vert?raw';
+import cirrusFrag from '../shaders/cirrus.frag?raw';
 
 export interface FrameUniforms {
   sunDir: Vec3;
@@ -103,6 +105,10 @@ export class Renderer {
   private sky!: { prog: WebGLProgram; u: Uniforms };
   private comp!: { prog: WebGLProgram; u: Uniforms };
   private stars!: { prog: WebGLProgram; u: Uniforms };
+  private cirrus!: { prog: WebGLProgram; u: Uniforms };
+  private cirrusTex: WebGLTexture | null = null;
+  private cirrusFbo: WebGLFramebuffer | null = null;
+  private emptyVao!: WebGLVertexArrayObject;
   private vao!: WebGLVertexArrayObject;
   private starVao!: WebGLVertexArrayObject;
   private starCount = 0;
@@ -140,6 +146,7 @@ export class Renderer {
   private init(): void {
     const gl = this.gl;
     this.vao = gl.createVertexArray()!;
+    this.emptyVao = gl.createVertexArray()!;
     this.buildPrograms();
 
     // Cloud noise volume
@@ -186,6 +193,7 @@ export class Renderer {
     this.sky = program(gl, fullscreenVert, frag({ CLOUD_STEPS: q.cloudSteps, LIGHT_STEPS: Math.max(1, q.lightSteps) }, skyFrag));
     this.comp = program(gl, fullscreenVert, frag({}, compositeFrag));
     this.stars = program(gl, starsVert, frag({}, starsFrag));
+    this.cirrus = program(gl, cirrusVert, frag({}, cirrusFrag));
   }
 
   /** Adjust dynamic resolution; only rebuilds targets when the change is meaningful. */
@@ -249,6 +257,10 @@ export class Renderer {
     this.skyFbos.forEach((f) => gl.deleteFramebuffer(f));
     this.skyTexs = [this.makeTarget(sw, sh, true), this.makeTarget(sw, sh, true)];
     this.skyFbos = this.skyTexs.map((t) => this.makeFbo(t));
+    if (this.cirrusTex) gl.deleteTexture(this.cirrusTex);
+    if (this.cirrusFbo) gl.deleteFramebuffer(this.cirrusFbo);
+    this.cirrusTex = this.makeTarget(sw, sh, false);
+    this.cirrusFbo = this.makeFbo(this.cirrusTex);
     this.historyValid = false;
 
     // Camera: diagonal FOV split into horizontal/vertical tangents.
@@ -295,6 +307,33 @@ export class Renderer {
     gl.uniform1f(u.uExposure, f.exposure);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
+    // 1b. Cirrus strands into their own target (premultiplied alpha, additive "over").
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.cirrusFbo);
+    gl.viewport(0, 0, this.skyW, this.skyH);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    if (f.coverHigh > 0.01) {
+      gl.useProgram(this.cirrus.prog);
+      const cu = this.cirrus.u;
+      this.setCamera(cu);
+      gl.uniform2fv(cu.uWindHigh, f.windHigh);
+      gl.uniform2fv(cu.uWindDir, f.windDir);
+      gl.uniform1f(cu.uCover, f.coverHigh);
+      gl.uniform1f(cu.uTime, f.cloudTime);
+      gl.uniform2f(cu.uPixel, 2 / this.skyW, 2 / this.skyH);
+      const segs = 24;
+      gl.uniform1i(cu.uSegments, segs);
+      gl.uniform3fv(cu.uSunDir, f.sunDir);
+      gl.uniform3fv(cu.uAmbTop, f.ambTop);
+      gl.uniform3fv(cu.uLightHigh, f.lightHigh);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.bindVertexArray(this.emptyVao);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, (segs + 1) * 2, this.quality.cirrusStrands);
+      gl.disable(gl.BLEND);
+      gl.bindVertexArray(this.vao);
+    }
+
     // 2. Sky + clouds at internal resolution
     const cur = this.ping, prev = 1 - this.ping;
     this.ping = prev;
@@ -337,6 +376,9 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.skyTexs[prev]);
     gl.uniform1i(u.uPrev, 2);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.cirrusTex);
+    gl.uniform1i(u.uCirrus, 3);
     gl.uniform1f(u.uHistory, this.historyValid ? this.history : 0);
     gl.uniform1f(u.uFrame, this.frameNo++ % 64);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

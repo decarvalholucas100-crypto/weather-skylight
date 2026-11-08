@@ -40,6 +40,7 @@ uniform vec2 uWindDir;       // unit vector clouds move toward
 uniform float uFlash;        // lightning, 0..1
 uniform vec2 uFlashPos;      // world xy at cloud height
 uniform vec2 uResolution;
+uniform sampler2D uCirrus;   // strand cirrus (premultiplied), same resolution as this pass
 uniform sampler2D uPrev;     // previous frame, for temporal accumulation
 uniform float uHistory;      // 0 = no history, ~0.85 = smooth
 uniform float uFrame;
@@ -321,43 +322,19 @@ vec4 scudLayer(vec3 rd) {
 // (domain warping), grouped into irregular patches, with denser "tufts" where fibers hook.
 vec4 highLayer(vec3 rd) {
   if (uCoverHigh < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
+  // Cirrus strands were drawn into uCirrus (premultiplied) by the strand pass.
+  vec4 strands = texture(uCirrus, vUv);
+  // Cirrostratus veil: a faint milky sheet that appears as high cover increases.
   float h = 9000.0;
   vec2 p = rd.xy * (h / rd.z) + uWindHigh;
-  vec2 wdir = uWindDir, perp = vec2(-wdir.y, wdir.x);
-  vec2 s = vec2(dot(p, wdir), dot(p, perp));
   float cov = uCoverHigh;
-
-  // Where cirrus exists at all: big irregular patches and bands.
-  float patchN = fbm2(s / vec2(30000.0, 14000.0) + 1.3, 4);
-  float th = 0.6 - cov * 0.55;
-  float patchM = smoothstep(th, th + 0.22, patchN);
-  // Cirrostratus veil: a faint milky sheet that appears as high cover increases. Computed
-  // independently of the streak patches so it never has a hard edge.
-  float veil = smoothstep(0.45, 1.0, cov) * (0.35 + 0.3 * fbm2(s / 12000.0, 3));
-  if (patchM < 0.003 && veil < 0.003) return vec4(0.0, 0.0, 0.0, 1.0);
-
-  // Curving flow: displace coordinates with low-frequency noise so wisps bend and fan out.
-  vec2 w1 = vec2(fbm2(s / 9000.0 + 4.1, 3), fbm2(s / 9000.0 + 11.7, 3)) - 0.5;
-  vec2 q = s + vec2(w1.x * 2500.0, w1.y * 1300.0);
-  // Wisps: soft, strongly wind-stretched clouds (the body of each cirrus streak).
-  float wisp = fbm2(q / vec2(6000.0, 1900.0) + 2.2, 5);
-  float wisp2 = fbm2(q / vec2(2500.0, 700.0) + 6.1, 3);
-  float body = smoothstep(0.52, 0.8, wisp * 0.75 + wisp2 * 0.25);
-  // Fibers: fine striations along the wind, broken up so they never form continuous lines.
-  float stri = fbm2(q / vec2(2600.0, 95.0), 2);
-  float brk = fbm2(q / vec2(1800.0, 700.0) + 8.8, 2);
-  // Fine hair-like fibrils (thin across the wind) layered on broader streaks.
-  float fibril = fbm2(q / vec2(1400.0, 38.0) + 3.3, 2);
-  float fibers = mix(0.45, 1.0, smoothstep(0.38, 0.72, stri)) * mix(0.7, 1.0, smoothstep(0.35, 0.7, fibril)) * mix(0.5, 1.0, brk);
-  // Tufts: denser heads where streaks hook (cirrus uncinus).
-  float tuft = smoothstep(0.62, 0.85, fbm2(q / vec2(2200.0, 1000.0) + 5.5, 3));
-  float d = patchM * body * fibers * (1.0 + tuft * 0.8) + veil * 0.35;
-  // Cirrus is thin ice: mostly translucent, the sky shows through.
-  float alpha = (1.0 - exp(-d * 1.1)) * 0.5 * smoothstep(0.0, 0.08, cov);
+  float veil = smoothstep(0.45, 1.0, cov) * (0.35 + 0.3 * fbm2(p / 12000.0, 3)) * 0.15;
   float cosA = dot(rd, uSunDir);
-  // Ice crystals forward-scatter strongly: cirrus near the sun glows.
-  vec3 col = uAmbTop * 1.15 + uLightHigh * (0.09 + hgPhase(cosA, 0.8) * 0.9 + hgPhase(cosA, 0.3) * 0.25);
-  return vec4(col * alpha, 1.0 - alpha);
+  vec3 vcol = uAmbTop * 1.15 + uLightHigh * (0.09 + hgPhase(cosA, 0.8) * 0.9 + hgPhase(cosA, 0.3) * 0.25);
+  // Composite strands over the veil.
+  vec3 col = vcol * veil * (1.0 - strands.a) + strands.rgb;
+  float alpha = 1.0 - (1.0 - veil) * (1.0 - strands.a);
+  return vec4(col, 1.0 - alpha);
 }
 
 vec3 acesFilm(vec3 x) {
