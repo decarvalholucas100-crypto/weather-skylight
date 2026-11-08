@@ -132,6 +132,40 @@ export class Ui {
     const modes = this.section('Mode');
     this.buttons(modes, config.modeOrder.map((m) => [m, MODES[m].label] as [ModeName, string]), (m) => this.bus.emit({ type: 'mode.set', mode: m }), this.modeBtns);
 
+    const loc = this.section('Location');
+    const locText = document.createElement('div');
+    locText.className = 'sk-row';
+    locText.style.color = '#c8d2e0';
+    const showLoc = () => {
+      const p = getPlace();
+      const src = p.source === 'city' ? p.name ?? 'city' : p.source === 'browser' ? `your location (±${p.accuracyM} m)` : p.source === 'cached' ? 'last known location' : config.location.name;
+      if (p.source !== 'city') citySel.value = '';
+      locText.textContent = `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} · ${src}`;
+    };
+    const citySel = document.createElement('select');
+    citySel.style.cssText = 'width:100%;margin:6px 0 8px;padding:6px;border-radius:8px;background:#1f2633;color:#dfe6f0;border:1px solid #2f3a4d;font:inherit';
+    citySel.append(new Option('Pick a city…', ''));
+    [...CITIES].sort((a, b) => a.name.localeCompare(b.name)).forEach((c) => citySel.append(new Option(c.name, c.name)));
+    citySel.addEventListener('change', () => {
+      const c = CITIES.find((x) => x.name === citySel.value);
+      if (c) setCity(c);
+    });
+    if (getPlace().source === 'city') citySel.value = getPlace().name ?? '';
+    showLoc();
+    onPlaceChange(showLoc);
+    loc.appendChild(locText);
+    loc.appendChild(citySel);
+    const locBtns = new Map<string, HTMLButtonElement>();
+    this.buttons(loc, [['use', 'Use my location'], ['reset', 'Reset to address']], (k) => {
+      if (k === 'use') {
+        locText.textContent = 'Asking the browser…';
+        useMyLocation().then((ok) => { if (!ok) locText.textContent = 'Location unavailable or blocked (check browser site settings)'; else showLoc(); });
+      } else {
+        resetLocation();
+        showLoc();
+      }
+    }, locBtns);
+
     const time = this.section('Time');
     const fmtTime = (h: number) => {
       const hh = Math.floor(h) % 24, mm = Math.floor((h % 1) * 60);
@@ -173,40 +207,6 @@ export class Ui {
     const compass = (v: number) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(v / 45) % 8] + ` ${Math.round(v)}°`;
     this.slider(wx, { label: 'Wind toward', min: 0, max: 359, step: 1, value: 90, fmt: compass, overridable: true }, (v) => { dev.windToDeg = v; });
     this.slider(wx, { label: 'Lightning', min: 0, max: 1, step: 1, value: 1, fmt: (v) => (v ? 'on' : 'off'), overridable: true }, (v) => { dev.lightning = v === undefined ? undefined : v > 0.5; });
-
-    const loc = this.section('Location');
-    const locText = document.createElement('div');
-    locText.className = 'sk-row';
-    locText.style.color = '#c8d2e0';
-    const showLoc = () => {
-      const p = getPlace();
-      const src = p.source === 'city' ? p.name ?? 'city' : p.source === 'browser' ? `your location (±${p.accuracyM} m)` : p.source === 'cached' ? 'last known location' : config.location.name;
-      if (p.source !== 'city') citySel.value = '';
-      locText.textContent = `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} · ${src}`;
-    };
-    const citySel = document.createElement('select');
-    citySel.style.cssText = 'width:100%;margin:6px 0 8px;padding:6px;border-radius:8px;background:#1f2633;color:#dfe6f0;border:1px solid #2f3a4d;font:inherit';
-    citySel.append(new Option('Pick a city…', ''));
-    [...CITIES].sort((a, b) => a.name.localeCompare(b.name)).forEach((c) => citySel.append(new Option(c.name, c.name)));
-    citySel.addEventListener('change', () => {
-      const c = CITIES.find((x) => x.name === citySel.value);
-      if (c) setCity(c);
-    });
-    if (getPlace().source === 'city') citySel.value = getPlace().name ?? '';
-    showLoc();
-    onPlaceChange(showLoc);
-    loc.appendChild(locText);
-    loc.appendChild(citySel);
-    const locBtns = new Map<string, HTMLButtonElement>();
-    this.buttons(loc, [['use', 'Use my location'], ['reset', 'Reset to address']], (k) => {
-      if (k === 'use') {
-        locText.textContent = 'Asking the browser…';
-        useMyLocation().then((ok) => { if (!ok) locText.textContent = 'Location unavailable or blocked (check browser site settings)'; else showLoc(); });
-      } else {
-        resetLocation();
-        showLoc();
-      }
-    }, locBtns);
 
     const disp = this.section('Display');
     this.brightSlider = this.slider(disp, { label: 'Brightness', min: config.brightness.min, max: config.brightness.max, step: 0.05, value: this.state.brightness, fmt: pct, overridable: false }, (v) => {
