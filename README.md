@@ -16,7 +16,7 @@ npm run build    # static output in dist/
 | --- | --- |
 | `M` / `→` | next mode |
 | `N` / `←` | previous mode |
-| `1`–`5` | Live, Always Sunny, Clear Night, Golden Hour, Storm |
+| `1`–`6` | Live, Always Sunny, Clear Night, Cloudy Night, Golden Hour, Storm |
 | `↑` / `↓` | brightness |
 | `D` | dev panel (time of day, time speed, clouds, rain, wind, lightning, quality) |
 | `I` | debug overlay (FPS, weather values, mode) |

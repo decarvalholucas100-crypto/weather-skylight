@@ -67,7 +67,7 @@ export function computeLighting(p: SkyParams): Lighting {
   const lightDir = useMoon ? p.moonDir : p.sunDir;
 
   // City light (sodium + LED mix): warm orange-pink, reflected by cloud bases.
-  const cityGlow: Vec3 = scale([1.0, 0.58, 0.36], lp * night);
+  const cityGlow: Vec3 = scale([0.86, 0.6, 0.47], lp * night);
 
   // Under a thick deck, skylight turns gray (no blue sky visible above the clouds).
   const zl = luminance(zen);
@@ -77,12 +77,12 @@ export function computeLighting(p: SkyParams): Lighting {
   const groundBounce = scale(sunlightAt(20, p.sunDir, mieScale), exposure * Math.max(0, p.sunDir[2]) * 0.012 * dim);
   // Overcast light is neutral-to-cool; strip the warm ground-bounce tint under a deck.
   const gb = luminance(groundBounce);
-  const ambBottom = add(mix(groundBounce, [gb * 0.95, gb, gb * 1.08], deck), scale(ambTopDay, 0.18), scale(cityGlow, 0.32 * (0.6 + 0.4 * p.cloudLow)));
+  const ambBottom = add(mix(groundBounce, [gb * 0.95, gb, gb * 1.08], deck), scale(ambTopDay, 0.18), scale(cityGlow, 0.17 * (0.6 + 0.4 * p.cloudLow)));
 
   const nightSky = add(
     scale([0.004, 0.007, 0.018], night),
     scale([0.022, 0.017, 0.018], lp * night), // skyglow
-    scale([0.012, 0.022, 0.05], night * moonLightAmt), // moonlit sky turns deep blue
+    scale([0.008, 0.013, 0.028], night * moonLightAmt), // moonlit sky turns deep blue
   );
 
   const sunGround = sunlightAt(20, p.sunDir, mieScale);

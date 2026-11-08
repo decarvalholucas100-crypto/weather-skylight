@@ -91,6 +91,14 @@ vec4 slidingDrops(vec2 p, float cols, float t, float seed) {
   return vec4(drop, trail);
 }
 
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash32(i).x, b = hash32(i + vec2(1.0, 0.0)).x;
+  float c = hash32(i + vec2(0.0, 1.0)).x, d = hash32(i + vec2(1.0, 1.0)).x;
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 vec3 moon(vec3 rd) {
   float c = dot(rd, uMoonDir);
   float ang = acos(clamp(c, -1.0, 1.0));
@@ -101,8 +109,12 @@ vec3 moon(vec3 rd) {
   vec3 ty = cross(uMoonDir, tx);
   vec2 s = vec2(dot(rd, tx), dot(rd, ty)) / sin(uMoonRadius);
   float r2 = dot(s, s);
-  float edge = smoothstep(1.0, 0.94, sqrt(r2));
-  if (r2 >= 1.0) return vec3(0.0);
+  // Anti-aliased limb: soften over about one screen pixel, whatever the moon's size.
+  float rr = sqrt(r2);
+  float aa = max(fwidth(rr) * 1.2, 0.01);
+  float edge = smoothstep(1.0, 1.0 - aa, rr);
+  if (rr >= 1.0) return vec3(0.0);
+  r2 = min(r2, 0.9999);
   vec3 n = normalize(s.x * tx + s.y * ty - sqrt(1.0 - r2) * uMoonDir); // faces the viewer
   // Phase falls out of real geometry: the side facing the sun is lit.
   float lit = smoothstep(-0.04, 0.12, dot(n, uSunDir));
@@ -113,7 +125,8 @@ vec3 moon(vec3 rd) {
   maria += smoothstep(0.65, 0.2, length(m - vec2(0.35, 0.35))) * 0.3;
   maria += smoothstep(0.5, 0.1, length(m - vec2(0.1, -0.5))) * 0.25;
   maria += smoothstep(0.45, 0.1, length(m - vec2(-0.6, -0.3))) * 0.2;
-  float tex = 1.0 - maria + (hash32(floor(s * 40.0)).x - 0.5) * 0.06;
+  // Smooth fine mottling (value noise) instead of blocky per-cell hash.
+  float tex = 1.0 - maria + (vnoise(s * 9.0) - 0.5) * 0.08 + (vnoise(s * 23.0) - 0.5) * 0.04;
   float limb = 0.75 + 0.25 * sqrt(1.0 - r2);
   vec3 earthshine = uMoonColor * 0.012;
   return (uMoonColor * lit * tex * limb + earthshine) * edge;

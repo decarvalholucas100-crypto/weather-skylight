@@ -178,7 +178,7 @@ export class Ui {
 
     const hint = document.createElement('div');
     hint.className = 'sk-hint';
-    hint.innerHTML = 'Keys: <b>M</b>/<b>N</b> or ←/→ mode · <b>1-5</b> pick mode · ↑/↓ brightness · <b>D</b> this panel · <b>I</b> debug · <b>F</b> fullscreen';
+    hint.innerHTML = 'Keys: <b>M</b>/<b>N</b> or ←/→ mode · <b>1-6</b> pick mode · ↑/↓ brightness · <b>D</b> this panel · <b>I</b> debug · <b>F</b> fullscreen';
     this.panel.appendChild(hint);
     this.sync();
   }

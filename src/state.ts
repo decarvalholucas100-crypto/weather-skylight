@@ -46,6 +46,10 @@ export const MODES: Record<ModeName, ModeSpec> = {
     label: 'Clear Night', sun: { alt: -32, az: 0 }, moon: 'visible',
     weather: { cloudLow: 0, cloudMid: 0, cloudHigh: 0, storminess: 0, rain: 0, haze: 0.05, lightning: 0, windX: 2, windY: 1 },
   },
+  cloudyNight: {
+    label: 'Cloudy Night', sun: { alt: -32, az: 0 }, moon: 'visible',
+    weather: { cloudLow: 0.5, cloudMid: 0.25, cloudHigh: 0.25, storminess: 0, rain: 0, haze: 0.1, lightning: 0, windX: 6, windY: 2 },
+  },
   golden: {
     label: 'Golden Hour', sun: { alt: 3.5, az: 250 }, moon: 'real',
     weather: { cloudLow: 0.38, cloudMid: 0.25, cloudHigh: 0.35, storminess: 0, rain: 0, haze: 0.15, lightning: 0, windX: 5, windY: 2 },

@@ -1,7 +1,7 @@
 // Central configuration. Everything a person might want to tune lives here.
 
 export type QualityName = 'high' | 'medium' | 'low';
-export type ModeName = 'live' | 'sunny' | 'clearNight' | 'golden' | 'storm';
+export type ModeName = 'live' | 'sunny' | 'clearNight' | 'cloudyNight' | 'golden' | 'storm';
 
 export interface QualityPreset {
   /** Fraction of the screen resolution the sky is rendered at, then upscaled. */
@@ -45,20 +45,20 @@ export const config = {
   /** Soft darkening toward the screen edges, like looking up a skylight well. 0 = off. */
   vignette: 0.18,
   /** Draw the moon slightly larger than true size (it looks bigger to people than to cameras). */
-  moonScale: 1.25,
+  moonScale: 1.5,
 
   /** Light pollution, 0 = desert, 1 = Times Square. New York metro is roughly Bortle 8. */
   lightPollution: 0.8,
 
   quality: {
-    high: { renderScale: 0.5, maxInternalWidth: 1280, cloudSteps: 56, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560 },
+    high: { renderScale: 0.75, maxInternalWidth: 1920, cloudSteps: 56, lightSteps: 5, skySamples: 16, outputMaxWidth: 2560 },
     medium: { renderScale: 0.35, maxInternalWidth: 640, cloudSteps: 24, lightSteps: 3, skySamples: 10, outputMaxWidth: 1280 },
     low: { renderScale: 0.3, maxInternalWidth: 480, cloudSteps: 0, lightSteps: 0, skySamples: 8, outputMaxWidth: 960 },
   } satisfies Record<QualityName, QualityPreset>,
 
   defaultQuality: 'high' as QualityName,
   defaultMode: 'live' as ModeName,
-  modeOrder: ['live', 'sunny', 'clearNight', 'golden', 'storm'] as ModeName[],
+  modeOrder: ['live', 'sunny', 'clearNight', 'cloudyNight', 'golden', 'storm'] as ModeName[],
 
   brightness: { initial: 1.0, step: 0.1, min: 0.2, max: 1.6 },
 

@@ -214,6 +214,7 @@ function frame(): void {
     const [iw, ih] = renderer.internalSize;
     const w = weather;
     ui.setOverlay([
+      `version    v${__APP_VERSION__}  build ${__BUILD_SHA__}  ${__BUILD_TIME__}`,
       `fps        ${fps.toFixed(1)}`,
       `mode       ${MODES[state.mode].label}   quality ${state.quality}`,
       `output     ${renderer.outW}x${renderer.outH}   sky ${iw}x${ih}`,
