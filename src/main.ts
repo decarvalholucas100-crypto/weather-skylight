@@ -51,6 +51,7 @@ if (numParam('lat') !== undefined && numParam('lon') !== undefined) {
   if (qs.get('tz')) config.location.timeZone = qs.get('tz')!;
 }
 if (numParam('fov') !== undefined) config.fovDeg = numParam('fov')!;
+const maxOut = numParam('maxout'); // ?maxout=0 lifts the output-size cap (full-resolution captures)
 
 const state: UiState = {
   mode: urlMode && urlMode in MODES ? urlMode : config.defaultMode,
@@ -74,6 +75,7 @@ try {
   console.error(e);
   throw e;
 }
+if (maxOut !== undefined) { renderer.outputMaxWidthOverride = maxOut; renderer.resize(true); }
 const ui = new Ui(state, clock, bus);
 ui.onQuality = (q) => {
   state.quality = q;

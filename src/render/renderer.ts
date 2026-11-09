@@ -127,6 +127,8 @@ export class Renderer {
   history = 0.8;
   /** Sub-pixel TAA jitter; off for deterministic captures. */
   jitter = true;
+  /** Overrides the preset's output width cap; 0 means uncapped. */
+  outputMaxWidthOverride: number | undefined;
   private prevWind: [number, number] | null = null;
   private skyW = 0;
   private skyH = 0;
@@ -272,7 +274,8 @@ export class Renderer {
     const dpr = window.devicePixelRatio || 1;
     const cssW = window.innerWidth, cssH = window.innerHeight;
     let w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
-    const maxW = this.quality.outputMaxWidth;
+    // outputMaxWidthOverride: 0 = no cap (capture harness wants true viewport resolution).
+    const maxW = this.outputMaxWidthOverride === undefined ? this.quality.outputMaxWidth : this.outputMaxWidthOverride || Infinity;
     if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
     if (!force && w === this.outW && h === this.outH) return;
     this.outW = w; this.outH = h;

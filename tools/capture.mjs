@@ -76,6 +76,7 @@ function scenarioUrl(base, name, sc) {
   p.set('lat', String(loc.lat)); p.set('lon', String(loc.lon)); p.set('tz', loc.tz);
   p.set('date', sc.date || loc.date);
   if (quality) p.set('q', quality);
+  p.set('maxout', '0'); // full viewport resolution regardless of the preset's output cap
   for (const [k, v] of Object.entries(sc)) {
     if (k.startsWith('_') || k === 'reference' || k === 'date') continue;
     p.set(k, String(v));
@@ -121,8 +122,7 @@ async function capture() {
         await page.evaluate(() => window.skylight?.pause());
         await page.waitForTimeout(300);
         const file = join(runDir, `${name}_${vpName}.png`);
-        // The app renders one frame and returns the canvas as PNG: the output buffer's native size
-        // (the quality preset caps it, e.g. 2560 wide on High, so a 4K viewport yields 2560x1440).
+        // The app renders one frame and returns the canvas as PNG at viewport resolution.
         log('capture');
         const dataUrl = await page.evaluate(() => window.skylight.capture());
         writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'));
