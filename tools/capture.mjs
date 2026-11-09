@@ -12,6 +12,7 @@
 //   node tools/capture.mjs --software           headless + SwiftShader (no GPU; slow, CI/cloud)
 //   node tools/capture.mjs --frames 120         frames to render before each shot (TAA convergence)
 //   node tools/capture.mjs --notaa              disable temporal AA (raw single frame; noisy)
+//   node tools/capture.mjs --quality medium     force a quality preset (default: the app's, High)
 //   node tools/capture.mjs --compare            composites only, from the latest run vs baseline
 //
 // Default is headed Chromium on the real GPU (accurate frame times). Composites are written to
@@ -37,8 +38,9 @@ const cfg = JSON.parse(readFileSync(join(here, 'scenarios.json'), 'utf8'));
 const only = opt('only', '') ? opt('only', '').split(',') : Object.keys(cfg.scenarios);
 const viewportNames = opt('viewports', '') ? opt('viewports', '').split(',') : Object.keys(cfg.viewports);
 const software = flag('software');
-const settleMs = Number(opt('settle', software ? 240000 : 20000)); // max wait for convergence
-const settleFrames = Number(opt('frames', 120)); // frames to render before the shot
+const settleMs = Number(opt('settle', software ? 1200000 : 20000)); // max wait for convergence
+const settleFrames = Number(opt('frames', software ? 40 : 120)); // frames to render before the shot
+const quality = opt('quality', ''); // force a quality preset (high|medium|low), e.g. for smoke tests
 const capturesDir = join(root, 'captures');
 const refDir = join(root, 'reference');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -73,6 +75,7 @@ function scenarioUrl(base, name, sc) {
   if (flag('notaa')) p.set('notaa', '1'); p.set('snap', '1'); p.set('geo', '0');
   p.set('lat', String(loc.lat)); p.set('lon', String(loc.lon)); p.set('tz', loc.tz);
   p.set('date', sc.date || loc.date);
+  if (quality) p.set('q', quality);
   for (const [k, v] of Object.entries(sc)) {
     if (k.startsWith('_') || k === 'reference' || k === 'date') continue;
     p.set(k, String(v));
@@ -118,9 +121,12 @@ async function capture() {
         await page.evaluate(() => window.skylight?.pause());
         await page.waitForTimeout(300);
         const file = join(runDir, `${name}_${vpName}.png`);
-        log('screenshot');
-        await page.screenshot({ path: file, timeout: 600000 });
-        log('screenshot done');
+        // The app renders one frame and returns the canvas as PNG: the output buffer's native size
+        // (the quality preset caps it, e.g. 2560 wide on High, so a 4K viewport yields 2560x1440).
+        log('capture');
+        const dataUrl = await page.evaluate(() => window.skylight.capture());
+        writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'));
+        log('capture done');
         if (vp.upscale) await sharp(file).resize(vp.width * vp.upscale, vp.height * vp.upscale, { kernel: 'nearest' }).toFile(file.replace('.png', `_x${vp.upscale}.png`));
         timings.scenarios[name][vpName] = { fps, frameMs: fps ? Math.round(1000 / fps * 10) / 10 : null, dynamicResolutionPct: dyn, wallSec: Math.round((Date.now() - t0) / 100) / 10 };
         console.log(`${name.padEnd(20)} ${vpName.padEnd(6)} ${fps ? fps.toFixed(1) + ' fps' : 'n/a'}  dyn ${dyn}%`);

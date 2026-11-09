@@ -16,10 +16,17 @@ open captures/*/composites               # reference | baseline | this run, per 
 Headed Chromium opens briefly for each capture (that is the real GPU rendering). Frame times in
 `captures/<run>/timings.json` are from the app's own FPS counter.
 
-Options: `--only golden-hour,overcast`, `--viewports 1080p`, `--url https://weather-skylight.vercel.app`
+Options: `--quality medium` (force a preset), `--only golden-hour,overcast`, `--viewports 1080p`, `--url https://weather-skylight.vercel.app`
 (capture a deployment instead of the local dev server), `--software` (headless SwiftShader, for
 machines without a GPU; slow and its timings are not representative), `--compare` (rebuild
 composites from the latest run without recapturing), `--settle 4000` (ms to wait before the shot).
+
+## Software mode is for smoke tests only
+
+Without a GPU (`--software`, SwiftShader) a single High-quality frame takes tens of seconds even
+at the 384x240 wall size, so the defaults drop to 40 frames and a 20-minute settle, and 1080p/4K
+are only practical with `--quality low`. Its frame timings describe SwiftShader, not any display
+hardware. Use a real GPU for anything you intend to judge.
 
 ## How determinism works
 

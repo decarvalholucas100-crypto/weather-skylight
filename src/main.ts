@@ -188,7 +188,7 @@ let flash = 0;
 let flashPos: [number, number] = [0, 0];
 let flashT = -1;
 let nextStrike = 4 + Math.random() * 8;
-let frames = 0, fpsAcc = 0, fps = 0;
+let frames = 0, fpsAcc = 0, fps = 0, fpsWindowStart = performance.now();
 let lastAstro = 0;
 const wrap = (v: number, m: number) => ((v % m) + m) % m;
 
@@ -203,11 +203,20 @@ const hook = {
   get frames() { return frameCount; },
   /** Final-quality assets loaded (noise volume); captures should wait for this. */
   get ready() { return renderer.noiseReady; },
+  /** Render one frame now and return it as a PNG data URL (same task, so the drawing buffer
+   *  is still intact). Much faster than a browser screenshot on software GPUs. */
+  capture: () => { step(); return canvas.toDataURL('image/png'); },
 };
 (window as unknown as { skylight: unknown }).skylight = hook;
 
 function frame(): void {
   if (paused) return;
+  step();
+  requestAnimationFrame(frame);
+}
+
+/** One simulation + render step. */
+function step(): void {
   frameCount++;
   const dt = clock.tick();
   // Frozen: time of day, clouds and glass stop moving; only the render loop runs.
@@ -283,10 +292,11 @@ function frame(): void {
     starLimitMag: L.starLimitMag, starVis: L.starVis, milkyWay: L.milkyWay,
   });
 
-  // FPS + overlay + dynamic resolution
-  frames++; fpsAcc += dt;
+  // FPS + overlay + dynamic resolution. Measured from wall-clock time, not the clamped dt, so
+  // very slow renderers (software GL) report their true rate.
+  frames++; fpsAcc = (now - fpsWindowStart) / 1000;
   if (fpsAcc >= 0.5) {
-    fps = frames / fpsAcc; frames = 0; fpsAcc = 0;
+    fps = frames / fpsAcc; frames = 0; fpsAcc = 0; fpsWindowStart = now;
     // Frozen (capture harness): keep the render size fixed so frames are reproducible.
     if (!document.hidden && now > 4000 && !frozen) {
       const target = config.targetFps[state.quality];
@@ -318,7 +328,6 @@ function frame(): void {
     ].join('\n'));
   }
   ui.tickTimeSlider();
-  requestAnimationFrame(frame);
 }
 
 const fmtTemp = (c: number | null) => (c == null ? '-' : `${Math.round(c * 9 / 5 + 32)}°F / ${Math.round(c)}°C`);
