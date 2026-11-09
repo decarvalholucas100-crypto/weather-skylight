@@ -24,8 +24,22 @@ const dev: DevOverrides = {
   lightning: qs.has('lightning') ? qs.get('lightning') !== '0' : undefined,
   mid: numParam('mid'),
   high: numParam('high'),
+  convective: numParam('convective'),
+  lowBase: numParam('lowBase'),
 };
+// Capture harness (tools/capture.mjs): ?date=YYYY-MM-DD fixes the calendar date, ?freeze=1 stops
+// the clock and cloud evolution, ?notaa=1 disables temporal blending and jitter, ?seed=N fixes
+// the random lightning. Together they make a frame reproducible pixel for pixel.
+const frozen = qs.get('freeze') === '1';
+const noTaa = qs.get('notaa') === '1';
+if (qs.get('date')) clock.setDate(qs.get('date')!);
 if (numParam('t') !== undefined) clock.setTimeOfDay(numParam('t')!);
+if (numParam('seed') !== undefined) {
+  // Small seeded PRNG (mulberry32) in place of Math.random for the app's own randomness.
+  let s = (numParam('seed')! >>> 0) || 1;
+  const rnd = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  Math.random = rnd;
+}
 if (numParam('speed') !== undefined) clock.timeScale = numParam('speed')!;
 const urlMode = qs.get('mode') as ModeName | null;
 const urlQuality = qs.get('q') as QualityName | null;
@@ -178,9 +192,27 @@ let frames = 0, fpsAcc = 0, fps = 0;
 let lastAstro = 0;
 const wrap = (v: number, m: number) => ((v % m) + m) % m;
 
+// Harness hook: pause/resume the render loop (tools/capture.mjs pauses before a screenshot so
+// the capture isn't starved by continuous rendering on slow software GPUs).
+let paused = false;
+let frameCount = 0;
+const hook = {
+  pause: () => { paused = true; },
+  resume: () => { if (paused) { paused = false; requestAnimationFrame(frame); } },
+  /** Frames rendered so far; the harness waits for enough to let temporal blending converge. */
+  get frames() { return frameCount; },
+  /** Final-quality assets loaded (noise volume); captures should wait for this. */
+  get ready() { return renderer.noiseReady; },
+};
+(window as unknown as { skylight: unknown }).skylight = hook;
+
 function frame(): void {
+  if (paused) return;
+  frameCount++;
   const dt = clock.tick();
-  const simDt = dt * clock.timeScale;
+  // Frozen: time of day, clouds and glass stop moving; only the render loop runs.
+  const simDt = frozen ? 0 : dt * clock.timeScale;
+  if (frozen) clock.timeScale = 0;
   const now = performance.now();
 
   // Sun/moon: recompute ~10x per second (cheap, and they move slowly).
@@ -193,7 +225,9 @@ function frame(): void {
   if (devNow !== devSnapshot) { devSnapshot = devNow; weatherTau = 1.5; }
 
   const target = buildTarget(state.mode, astro, weather, dev);
-  easeParams(current, target, dt, clock.timeScale > 1 ? 0.3 : astroTau, weatherTau);
+  // Frozen: no easing at all, so the frame doesn't depend on how long the page has been open.
+  if (frozen) easeParams(current, target, 1, 1e-4, 1e-4);
+  else easeParams(current, target, dt, clock.timeScale > 1 ? 0.3 : astroTau, weatherTau);
 
   // Clouds drift with the (eased) wind; higher layers move faster.
   const wx = current.windX, wy = current.windY;
@@ -205,7 +239,7 @@ function frame(): void {
 
   // Glass wetness: wets quickly when rain starts, dries over a few minutes after it stops.
   const wetTarget = current.rain > 0.03 ? 1 : 0;
-  wet += (wetTarget - wet) * (1 - Math.exp(-dt / (wetTarget > wet ? 6 : 150)));
+  wet = frozen ? wetTarget : wet + (wetTarget - wet) * (1 - Math.exp(-dt / (wetTarget > wet ? 6 : 150)));
 
   // Lightning: random strikes, each a quick burst of 2-4 flickers.
   nextStrike -= dt;
@@ -221,7 +255,8 @@ function frame(): void {
     if (t > 0.7) { flashT = -1; flash = 0; }
   }
 
-  renderer.history = clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : state.quality === 'high' ? 0.88 : 0.92;
+  renderer.history = noTaa ? 0 : clock.timeScale > 30 ? 0.3 : clock.timeScale > 1 ? 0.6 : state.quality === 'high' ? 0.88 : 0.92;
+  renderer.jitter = !noTaa;
   const L = computeLighting(current);
   if (qs.has('nolight')) { L.lightLow = [0, 0, 0]; }
   if (qs.has('noamb')) { L.ambTop = [0, 0, 0]; L.ambBottom = [0, 0, 0]; }
@@ -240,7 +275,7 @@ function frame(): void {
     lowBase: current.lowBase, convective: current.convective, towers: current.towers, underDeck: L.underDeck,
     scud: Math.min(1, Math.max(current.storminess - 0.3, current.rain * 0.9) * Math.min(1, current.cloudLow * 1.2)),
     storm: current.storminess, rain: current.rain, wet, haze: current.haze,
-    cloudTime, realTime: (now / 1000) % 3600,
+    cloudTime, realTime: frozen ? 100 : (now / 1000) % 3600,
     windLow, windMid, windHigh, windDir: [wx / ws, wy / ws],
     flash, flashPos,
     brightness: state.brightness,
@@ -252,7 +287,8 @@ function frame(): void {
   frames++; fpsAcc += dt;
   if (fpsAcc >= 0.5) {
     fps = frames / fpsAcc; frames = 0; fpsAcc = 0;
-    if (!document.hidden && now > 4000) {
+    // Frozen (capture harness): keep the render size fixed so frames are reproducible.
+    if (!document.hidden && now > 4000 && !frozen) {
       const target = config.targetFps[state.quality];
       const k = renderer.dynamicScale;
       if (fps < target * 0.9) renderer.setDynamicScale(k * 0.9);

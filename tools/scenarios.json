@@ -1,0 +1,19 @@
+{
+  "_doc": "Deterministic scenes for tools/capture.mjs. Every key becomes a URL parameter on top of the harness defaults (freeze=1, notaa=1, seed=7, snap, geo=0, date, lat/lon of a fixed NYC-area point). 'reference' names a photo in reference/ to compare against.",
+  "location": { "lat": 40.71, "lon": -73.95, "tz": "America/New_York", "date": "2026-06-21" },
+  "scenarios": {
+    "clear-midday":       { "mode": "sunny",  "t": 12.5, "high": 0,   "reference": "clear-midday.jpg" },
+    "broken-cumulus":     { "mode": "live",   "t": 12.5, "cloud": 0.5, "mid": 0, "high": 0, "convective": 0.9, "lowBase": 1300, "wind": 6, "reference": "broken-cumulus.jpg" },
+    "overcast":           { "mode": "live",   "t": 12.0, "cloud": 1.0, "mid": 0.3, "high": 0, "convective": 0.1, "lowBase": 600, "reference": "overcast.jpg" },
+    "low-sun-backlit":    { "mode": "live",   "t": 18.6, "cloud": 0.45, "mid": 0, "high": 0.15, "convective": 0.85, "lowBase": 1400, "windto": 250, "reference": "low-sun-backlit.jpg" },
+    "golden-hour":        { "mode": "golden", "reference": "golden-hour.jpg" },
+    "moonlit-thin-cloud": { "mode": "live",   "t": 23.0, "date": "2026-06-30", "cloud": 0.35, "mid": 0.2, "high": 0.3, "convective": 0.4, "reference": "moonlit-thin-cloud.jpg" },
+    "tv-golden":          { "mode": "golden", "_note": "matches the owner's TV photo of Golden Hour mode" },
+    "tv-partly":          { "mode": "partly", "t": 15.0, "_note": "matches the owner's TV photo of Partly Cloudy mode" }
+  },
+  "viewports": {
+    "1080p": { "width": 1920, "height": 1080 },
+    "4k":    { "width": 3840, "height": 2160 },
+    "wall":  { "width": 384,  "height": 240, "upscale": 5 }
+  }
+}

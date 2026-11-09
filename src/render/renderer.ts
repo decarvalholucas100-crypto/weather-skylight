@@ -125,12 +125,16 @@ export class Renderer {
   private historyValid = false;
   /** Temporal blend weight; lowered when time is sped up to avoid smearing. */
   history = 0.8;
+  /** Sub-pixel TAA jitter; off for deterministic captures. */
+  jitter = true;
   private prevWind: [number, number] | null = null;
   private skyW = 0;
   private skyH = 0;
   private readonly lutSize = 128;
   /** Dynamic resolution factor (0.55..1) applied on top of the preset's render scale. */
   private dynScale = 1;
+  /** True once the final noise volume for this preset is on the GPU (the 128^3 one arrives async). */
+  noiseReady = false;
   outW = 0;
   outH = 0;
   private tanHalf: [number, number] = [1, 1];
@@ -192,7 +196,8 @@ export class Renderer {
   /** Swap in a higher-resolution noise volume, generated in a worker (same pattern, finer detail). */
   private upgradeNoise(): void {
     const N = this.quality.noiseSize;
-    if (N <= 64 || typeof Worker === 'undefined') return;
+    this.noiseReady = N <= 64 || typeof Worker === 'undefined';
+    if (this.noiseReady) return;
     try {
       const worker = new Worker(new URL('./noiseWorker.ts', import.meta.url), { type: 'module' });
       const t0 = performance.now();
@@ -201,10 +206,11 @@ export class Renderer {
         gl.bindTexture(gl.TEXTURE_3D, this.noiseTex);
         gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, N, N, N, 0, gl.RGBA, gl.FLOAT, e.data);
         gl.bindTexture(gl.TEXTURE_3D, null);
+        this.noiseReady = true;
         console.info(`cloud noise ${N}^3 ready in ${(performance.now() - t0).toFixed(0)} ms`);
         worker.terminate();
       };
-      worker.onerror = () => worker.terminate();
+      worker.onerror = () => { this.noiseReady = true; worker.terminate(); };
       worker.postMessage(N);
     } catch {
       /* stay on the 64^3 volume */
@@ -424,8 +430,9 @@ export class Renderer {
     // Halton(2,3) sub-pixel jitter sequence (8 frames) for temporal anti-aliasing.
     const fi = (this.frameNo % 8) + 1;
     const halton = (i: number, b: number) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
-    gl.uniform2f(u.uJitter, halton(fi, 2) - 0.5, halton(fi, 3) - 0.5);
-    gl.uniform1f(u.uFrame, this.frameNo++ % 64);
+    gl.uniform2f(u.uJitter, this.jitter ? halton(fi, 2) - 0.5 : 0, this.jitter ? halton(fi, 3) - 0.5 : 0);
+    // Without TAA, keep the per-frame jitter index fixed so consecutive frames are identical.
+    gl.uniform1f(u.uFrame, this.jitter ? this.frameNo++ % 64 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.historyValid = true;
     gl.bindTexture(gl.TEXTURE_2D, null);
