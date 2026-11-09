@@ -8,7 +8,6 @@
     "low-sun-backlit":    { "mode": "live",   "t": 18.6, "cloud": 0.45, "mid": 0, "high": 0.15, "convective": 0.85, "lowBase": 1400, "windto": 250, "reference": "low-sun-backlit.jpg" },
     "golden-hour":        { "mode": "golden", "reference": "golden-hour.jpg" },
     "moonlit-thin-cloud": { "mode": "live",   "t": 23.0, "date": "2026-06-30", "cloud": 0.35, "mid": 0.2, "high": 0.3, "convective": 0.4, "reference": "moonlit-thin-cloud.jpg" },
-    "tv-golden":          { "mode": "golden", "_note": "matches the owner's TV photo of Golden Hour mode" },
     "tv-partly":          { "mode": "partly", "t": 15.0, "_note": "matches the owner's TV photo of Partly Cloudy mode" }
   },
   "viewports": {
