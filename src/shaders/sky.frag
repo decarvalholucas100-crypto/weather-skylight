@@ -405,6 +405,11 @@ void main() {
   col = max(vec3(0.0), mix(vec3(lum), col, 1.18));
   col = acesFilm(col);
   col = pow(col, vec3(1.0 / 2.2));
+  // Dither before 8-bit storage: a dark night sky spans only a handful of 8-bit steps across the
+  // whole screen, and the upscale can't invent the values in between (visible banding on TVs).
+  // Triangular-distributed noise (two offset hashes) keeps the dither unbiased.
+  float dn = hash33(vec3(gl_FragCoord.xy, 11.0)).x + hash33(vec3(gl_FragCoord.xy, 23.0)).y - 1.0;
+  col += dn / 255.0;
   // Temporal accumulation: each frame uses a different ray offset; blending frames removes
   // raymarch noise. Clouds move slowly, so the history barely smears.
   // Only low clouds move at the low layer's speed; elsewhere (sky, cirrus) don't shift.
