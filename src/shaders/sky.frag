@@ -333,6 +333,11 @@ vec4 highLayer(vec3 rd) {
   if (uCoverHigh < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
   // Cirrus strands were drawn into uCirrus (premultiplied) by the strand pass.
   vec4 strands = texture(uCirrus, vUv);
+  // Cirrus is optically thin (tau ~0.3-0.6 even where dense). Wherever perspective piles many
+  // strands onto the same pixels, cap the layer's opacity at that physical limit along the slant
+  // path, so convergence toward the wind's vanishing point reads as a veil, never solid white.
+  float maxA = 1.0 - exp(-0.55 / max(rd.z, 0.3));
+  if (strands.a > maxA) { strands.rgb *= maxA / strands.a; strands.a = maxA; }
   // Cirrostratus veil: a faint milky sheet that appears as high cover increases.
   float h = 9000.0;
   vec2 p = rd.xy * (h / rd.z) + uWindHigh;
