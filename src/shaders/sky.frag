@@ -204,6 +204,9 @@ vec4 marchLow(vec3 rd, float jitter) {
     }
     t += dt;
   }
+  // The march stops once the cloud is effectively opaque; take transmittance the rest of the way
+  // to zero (smoothly) so a 2 km deck doesn't leak 1.5% of the sun disk as a white dot.
+  T *= smoothstep(0.015, 0.04, T);
   // Lightning: light the cloud from inside, around a random strike point.
   if (uFlash > 0.0) {
     vec3 pc = rd * (base + thick * 0.3) / rd.z;

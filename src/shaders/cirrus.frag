@@ -14,11 +14,12 @@ void main() {
   float x = vAcross;
   float profile = exp(-x * x * 3.2);
   float fibril = 0.85 + 0.15 * sin(x * 7.0 + vSeed * 50.0 + vAlong * 4.0);
-  float a = clamp(vAlpha * profile * fibril, 0.0, 1.0) * 0.11;
+  // Thin ice: a bundle of overlapping strands must stay translucent, so each strand is faint.
+  float a = clamp(vAlpha * profile * fibril, 0.0, 1.0) * 0.05;
   float c = dot(normalize(vDir), uSunDir);
   // Ice crystals: strong forward scattering, so cirrus near the sun glows.
   float g1 = 0.8, g2 = 0.3;
-  float ph = (1.0 - g1 * g1) / (12.566 * pow(1.0 + g1 * g1 - 2.0 * g1 * c, 1.5)) * 0.9
+  float ph = (1.0 - g1 * g1) / (12.566 * pow(1.0 + g1 * g1 - 2.0 * g1 * c, 1.5)) * 0.6
            + (1.0 - g2 * g2) / (12.566 * pow(1.0 + g2 * g2 - 2.0 * g2 * c, 1.5)) * 0.25;
   vec3 col = uAmbTop * 1.15 + uLightHigh * (0.09 + ph);
   outColor = vec4(col * a, a); // premultiplied
