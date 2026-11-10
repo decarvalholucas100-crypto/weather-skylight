@@ -67,7 +67,9 @@ void main() {
   float patchM = smoothstep(th, th + 0.16, patchN);
 
   // Bundle direction: wind direction plus a slowly varying flow angle shared by the cluster.
-  float flow = (gnoise(anchor / 15000.0) - 0.5) * 1.1 + (hc.z - 0.5) * 0.35;
+  // Streak direction drifts only gently across the sky (real cirrus bands run nearly parallel);
+  // a strongly varying field makes streaks cross and pile into a bright fan.
+  float flow = (gnoise(anchor / 40000.0) - 0.5) * 0.35 + (hc.z - 0.5) * 0.18;
   float ca = cos(flow), sa = sin(flow);
   vec2 dir = vec2(ca * uWindDir.x - sa * uWindDir.y, sa * uWindDir.x + ca * uWindDir.y);
   vec2 side = vec2(-dir.y, dir.x);
