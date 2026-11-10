@@ -171,7 +171,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       for (int k = 0; k < 3; k++) {
         float ph = mix(hgPhase(cosA, 0.8 * c), hgPhase(cosA, -0.25 * c), 0.25);
         direct += a * ph * exp(-od * b);
-        a *= 0.6; b *= 0.5; c *= 0.5;
+        a *= 0.55; b *= 0.65; c *= 0.5;
       }
       // Powder term: darkens thin edges that face away from the light ("dark centers, bright rims" from below).
       float powder = 1.0 - exp(-od * 2.0 - d * 0.5);
@@ -191,7 +191,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       }
       odUp *= sigma;
       float occl = exp(-odUp * 0.22);
-      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.22, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
+      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.10, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.55 + 0.3 * (1.0 - occl)) * mix(1.0, 0.6, saturate(d * 0.6));
       // A low sun skims under cloud bases; keep its self-shadowing from reading as dark smudges.
       float lowSun = 1.0 - saturate(uLightDir.z * 4.0);
       direct = mix(direct, max(direct, vec3(hgPhase(cosA, 0.3) * 0.25 * occl)), lowSun * 0.6);

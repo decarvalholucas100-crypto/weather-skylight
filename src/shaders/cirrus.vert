@@ -105,10 +105,19 @@ void main() {
   vec2 offs = sn * grow * sideSign;
 
   float alongA = smoothstep(0.0, 0.12, t) * smoothstep(1.0, 0.55, t) * (1.0 - 0.4 * t);
+  // Coverage conservation: a bundle's ~40 strands spread over 'bundleM' metres across the wind.
+  // Where perspective packs that width into fewer pixels than the strands need, they overlap and
+  // would stack to solid white, so scale each strand's opacity by the available width. The
+  // bundle's total optical depth then stays the same from any angle, like a real ice sheet.
+  float bundleM = mix(700.0, 2200.0, hc.y) * 2.0;
+  vec2 sb = project(wc + vec3(side * bundleM, 0.0)) - sc;
+  float bundlePx = length(sb / uPixel);
+  float needPx = 40.0 * max(len, 1.6) * 0.5;      // strands can overlap ~2x before it shows
+  float packing = clamp(bundlePx / max(needPx, 1.0), 0.15, 1.0);
   float shimmer = 0.85 + 0.15 * sin(uTime * 0.05 + hs.x * 40.0);
   // Bundle edges fade: strands far from the bundle's centre line are fainter.
   float edge = 1.0 - smoothstep(0.25, 0.9, abs(hs.y + hs2.x - 1.0));
-  vAlpha = patchM * alongA * mix(0.3, 1.0, hs2.z) * edge * shimmer / grow;
+  vAlpha = patchM * alongA * mix(0.3, 1.0, hs2.z) * edge * shimmer * packing / grow;
   vAcross = sideSign;
   vAlong = t;
   vDir = normalize(wc);
