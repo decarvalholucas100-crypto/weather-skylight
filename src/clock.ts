@@ -53,6 +53,16 @@ export class SimClock {
     return new Date(this.simMs).toLocaleString('en-US', { timeZone: config.location.timeZone, dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  /** Fix the simulated date (YYYY-MM-DD, local to the installation); time of day is kept. */
+  setDate(iso: string): void {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return;
+    const hours = this.timeOfDayHours();
+    // Noon UTC on that date, then setTimeOfDay places the local hour on the right civil day.
+    this.simMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12);
+    this.setTimeOfDay(hours);
+  }
+
   resetToReal(): void {
     this.simMs = Date.now();
     this.timeScale = 1;
