@@ -48,7 +48,7 @@ vec2 project(vec3 world) {
 
 void main() {
   float id = float(gl_InstanceID);
-  float cluster = floor(id / 40.0);
+  float cluster = floor(id / 24.0); // more, smaller bundles for the same strand budget
   vec3 hc = hash3(cluster, 0.0);
   vec3 hs = hash3(id, 1.0);
   vec3 hs2 = hash3(id, 2.0);
@@ -75,13 +75,15 @@ void main() {
   vec2 side = vec2(-dir.y, dir.x);
 
   // Strand within its bundle: offset across and along, similar length, own curvature.
-  float L = mix(1800.0, 7500.0, hc.x * hc.x) * mix(0.55, 1.15, hs.x);
+  // Real fall streaks are ~1-3 km long and tens of metres wide at 9 km up: at that distance a
+  // strand spans a few degrees, not a quarter of the sky. Oversized strands read as close.
+  float L = mix(900.0, 3000.0, hc.x * hc.x) * mix(0.6, 1.2, hs.x);
   // Strands overlap heavily inside a bundle (a Gaussian-ish spread), so they merge into a wisp.
-  float spread = (hs.y + hs2.x - 1.0) * mix(700.0, 2200.0, hc.y);
+  float spread = (hs.y + hs2.x - 1.0) * mix(400.0, 1200.0, hc.y);
   vec2 origin = rel + side * spread + dir * (hs.z - 0.5) * L * 0.6;
   // Strands in a bundle run nearly parallel (shared hook), with only slight individual bend.
   float curve = (hc.z - 0.5) * 0.6 + (hs2.x - 0.5) * 0.06;
-  float widthM = mix(60.0, 260.0, hs2.y * hs2.y) * mix(0.8, 1.3, hc.y);
+  float widthM = mix(25.0, 90.0, hs2.y * hs2.y) * mix(0.8, 1.3, hc.y);
 
   int seg = gl_VertexID / 2;
   float sideSign = (gl_VertexID % 2 == 0) ? -1.0 : 1.0;
@@ -111,7 +113,7 @@ void main() {
   // Where perspective packs that width into fewer pixels than the strands need, they overlap and
   // would stack to solid white, so scale each strand's opacity by the available width. The
   // bundle's total optical depth then stays the same from any angle, like a real ice sheet.
-  float bundleM = mix(700.0, 2200.0, hc.y) * 2.0;
+  float bundleM = mix(400.0, 1200.0, hc.y) * 2.0;
   vec2 sb = project(wc + vec3(side * bundleM, 0.0)) - sc;
   float bundlePx = length(sb / uPixel);
   float needPx = 40.0 * max(len, 1.6) * 0.5;      // strands can overlap ~2x before it shows
