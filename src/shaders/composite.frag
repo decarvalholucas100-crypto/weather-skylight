@@ -255,6 +255,7 @@ void main() {
   col *= 1.0 - uVignette * smoothstep(0.35, 1.0, vr);
 
   col *= uBrightness;
-  col += (ign(gl_FragCoord.xy) - 0.5) / 255.0;                              // dither against banding
+  // Output dither (triangular, 1 LSB) against banding on 8-bit panels.
+  col += (hash32(gl_FragCoord.xy).x + hash32(gl_FragCoord.xy + 7.0).y - 1.0) / 255.0;
   outColor = vec4(col, 1.0);
 }

@@ -48,7 +48,7 @@ vec2 project(vec3 world) {
 
 void main() {
   float id = float(gl_InstanceID);
-  float cluster = floor(id / 40.0);
+  float cluster = floor(id / 24.0); // more, smaller bundles for the same strand budget
   vec3 hc = hash3(cluster, 0.0);
   vec3 hs = hash3(id, 1.0);
   vec3 hs2 = hash3(id, 2.0);
@@ -67,19 +67,23 @@ void main() {
   float patchM = smoothstep(th, th + 0.16, patchN);
 
   // Bundle direction: wind direction plus a slowly varying flow angle shared by the cluster.
-  float flow = (gnoise(anchor / 15000.0) - 0.5) * 1.1 + (hc.z - 0.5) * 0.35;
+  // Streak direction drifts only gently across the sky (real cirrus bands run nearly parallel);
+  // a strongly varying field makes streaks cross and pile into a bright fan.
+  float flow = (gnoise(anchor / 40000.0) - 0.5) * 0.35 + (hc.z - 0.5) * 0.18;
   float ca = cos(flow), sa = sin(flow);
   vec2 dir = vec2(ca * uWindDir.x - sa * uWindDir.y, sa * uWindDir.x + ca * uWindDir.y);
   vec2 side = vec2(-dir.y, dir.x);
 
   // Strand within its bundle: offset across and along, similar length, own curvature.
-  float L = mix(1800.0, 7500.0, hc.x * hc.x) * mix(0.55, 1.15, hs.x);
+  // Real fall streaks are ~1-3 km long and tens of metres wide at 9 km up: at that distance a
+  // strand spans a few degrees, not a quarter of the sky. Oversized strands read as close.
+  float L = mix(900.0, 3000.0, hc.x * hc.x) * mix(0.6, 1.2, hs.x);
   // Strands overlap heavily inside a bundle (a Gaussian-ish spread), so they merge into a wisp.
-  float spread = (hs.y + hs2.x - 1.0) * mix(700.0, 2200.0, hc.y);
+  float spread = (hs.y + hs2.x - 1.0) * mix(400.0, 1200.0, hc.y);
   vec2 origin = rel + side * spread + dir * (hs.z - 0.5) * L * 0.6;
   // Strands in a bundle run nearly parallel (shared hook), with only slight individual bend.
   float curve = (hc.z - 0.5) * 0.6 + (hs2.x - 0.5) * 0.06;
-  float widthM = mix(60.0, 260.0, hs2.y * hs2.y) * mix(0.8, 1.3, hc.y);
+  float widthM = mix(25.0, 90.0, hs2.y * hs2.y) * mix(0.8, 1.3, hc.y);
 
   int seg = gl_VertexID / 2;
   float sideSign = (gl_VertexID % 2 == 0) ? -1.0 : 1.0;
@@ -105,10 +109,19 @@ void main() {
   vec2 offs = sn * grow * sideSign;
 
   float alongA = smoothstep(0.0, 0.12, t) * smoothstep(1.0, 0.55, t) * (1.0 - 0.4 * t);
+  // Coverage conservation: a bundle's ~40 strands spread over 'bundleM' metres across the wind.
+  // Where perspective packs that width into fewer pixels than the strands need, they overlap and
+  // would stack to solid white, so scale each strand's opacity by the available width. The
+  // bundle's total optical depth then stays the same from any angle, like a real ice sheet.
+  float bundleM = mix(400.0, 1200.0, hc.y) * 2.0;
+  vec2 sb = project(wc + vec3(side * bundleM, 0.0)) - sc;
+  float bundlePx = length(sb / uPixel);
+  float needPx = 40.0 * max(len, 1.6) * 0.5;      // strands can overlap ~2x before it shows
+  float packing = clamp(bundlePx / max(needPx, 1.0), 0.15, 1.0);
   float shimmer = 0.85 + 0.15 * sin(uTime * 0.05 + hs.x * 40.0);
   // Bundle edges fade: strands far from the bundle's centre line are fainter.
   float edge = 1.0 - smoothstep(0.25, 0.9, abs(hs.y + hs2.x - 1.0));
-  vAlpha = patchM * alongA * mix(0.3, 1.0, hs2.z) * edge * shimmer / grow;
+  vAlpha = patchM * alongA * mix(0.3, 1.0, hs2.z) * edge * shimmer * packing / grow;
   vAcross = sideSign;
   vAlong = t;
   vDir = normalize(wc);

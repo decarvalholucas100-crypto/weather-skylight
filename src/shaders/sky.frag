@@ -171,7 +171,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       for (int k = 0; k < 3; k++) {
         float ph = mix(hgPhase(cosA, 0.8 * c), hgPhase(cosA, -0.25 * c), 0.25);
         direct += a * ph * exp(-od * b);
-        a *= 0.6; b *= 0.5; c *= 0.5;
+        a *= 0.55; b *= 0.65; c *= 0.5;
       }
       // Powder term: darkens thin edges that face away from the light ("dark centers, bright rims" from below).
       float powder = 1.0 - exp(-od * 2.0 - d * 0.5);
@@ -191,7 +191,7 @@ vec4 marchLow(vec3 rd, float jitter) {
       }
       odUp *= sigma;
       float occl = exp(-odUp * 0.22);
-      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.22, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.85 + 0.3 * (1.0 - occl));
+      vec3 amb = uAmbTop * mix(0.45, 1.0, uUnderDeck) * mix(0.10, 1.0, occl) * mix(0.75, 1.0, saturate(hf)) + uAmbBottom * (0.55 + 0.3 * (1.0 - occl)) * mix(1.0, 0.6, saturate(d * 0.6));
       // A low sun skims under cloud bases; keep its self-shadowing from reading as dark smudges.
       float lowSun = 1.0 - saturate(uLightDir.z * 4.0);
       direct = mix(direct, max(direct, vec3(hgPhase(cosA, 0.3) * 0.25 * occl)), lowSun * 0.6);
@@ -204,6 +204,9 @@ vec4 marchLow(vec3 rd, float jitter) {
     }
     t += dt;
   }
+  // The march stops once the cloud is effectively opaque; take transmittance the rest of the way
+  // to zero (smoothly) so a 2 km deck doesn't leak 1.5% of the sun disk as a white dot.
+  T *= smoothstep(0.015, 0.04, T);
   // Lightning: light the cloud from inside, around a random strike point.
   if (uFlash > 0.0) {
     vec3 pc = rd * (base + thick * 0.3) / rd.z;
@@ -330,6 +333,11 @@ vec4 highLayer(vec3 rd) {
   if (uCoverHigh < 0.01) return vec4(0.0, 0.0, 0.0, 1.0);
   // Cirrus strands were drawn into uCirrus (premultiplied) by the strand pass.
   vec4 strands = texture(uCirrus, vUv);
+  // Cirrus is optically thin (tau ~0.3-0.6 even where dense). Wherever perspective piles many
+  // strands onto the same pixels, cap the layer's opacity at that physical limit along the slant
+  // path, so convergence toward the wind's vanishing point reads as a veil, never solid white.
+  float maxA = 1.0 - exp(-0.55 / max(rd.z, 0.3));
+  if (strands.a > maxA) { strands.rgb *= maxA / strands.a; strands.a = maxA; }
   // Cirrostratus veil: a faint milky sheet that appears as high cover increases.
   float h = 9000.0;
   vec2 p = rd.xy * (h / rd.z) + uWindHigh;
@@ -397,6 +405,11 @@ void main() {
   col = max(vec3(0.0), mix(vec3(lum), col, 1.18));
   col = acesFilm(col);
   col = pow(col, vec3(1.0 / 2.2));
+  // Dither before 8-bit storage: a dark night sky spans only a handful of 8-bit steps across the
+  // whole screen, and the upscale can't invent the values in between (visible banding on TVs).
+  // Triangular-distributed noise (two offset hashes) keeps the dither unbiased.
+  float dn = hash33(vec3(gl_FragCoord.xy, 11.0)).x + hash33(vec3(gl_FragCoord.xy, 23.0)).y - 1.0;
+  col += dn / 255.0;
   // Temporal accumulation: each frame uses a different ray offset; blending frames removes
   // raymarch noise. Clouds move slowly, so the history barely smears.
   // Only low clouds move at the low layer's speed; elsewhere (sky, cirrus) don't shift.
